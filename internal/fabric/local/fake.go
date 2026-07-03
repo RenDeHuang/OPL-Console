@@ -3,7 +3,6 @@ package local
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/RenDeHuang/opl-console/internal/fabric"
 )
@@ -44,7 +43,7 @@ func (f *Fake) ResetWorkspaceToken(ctx context.Context, request fabric.ResetWork
 	return fabric.RuntimeHandle{
 		ProviderResourceID: "local-route/" + request.WorkspaceID,
 		Status:             "ready",
-		URL:                "http://127.0.0.1:8787/w/" + request.WorkspaceID + "?token=" + request.Token,
+		URL:                workspaceRouteURL(request.WorkspaceID, request.Token),
 	}, nil
 }
 
@@ -53,10 +52,13 @@ func (f *Fake) DeleteWorkspaceToken(ctx context.Context, request fabric.DeleteWo
 }
 
 func (f *Fake) CreateWorkspaceRoute(ctx context.Context, request fabric.CreateRouteRequest) (fabric.RuntimeHandle, error) {
-	slug := strings.ToLower(strings.ReplaceAll(request.WorkspaceName, " ", "-"))
 	return fabric.RuntimeHandle{
 		ProviderResourceID: "local-route/" + request.WorkspaceID,
 		Status:             "ready",
-		URL:                "http://127.0.0.1:8787/w/" + slug + "?token=" + request.Token,
+		URL:                workspaceRouteURL(request.WorkspaceID, request.Token),
 	}, nil
+}
+
+func workspaceRouteURL(workspaceID, token string) string {
+	return "http://127.0.0.1:8787/w/" + workspaceID + "?token=" + token
 }

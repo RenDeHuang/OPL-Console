@@ -178,6 +178,40 @@ func TestCreateWorkspaceWrapsRouteErrorAndDestroysRouteAndComputeOnly(t *testing
 	}
 }
 
+func TestCreateWorkspaceDestroysRouteOnRouteErrorWithEmptyHandle(t *testing.T) {
+	providerErr := errors.New("provider route failed")
+	fabricPort := &recordingFabric{createRouteErr: providerErr}
+	service := NewService(fabricPort)
+
+	_, err := service.CreateWorkspace(context.Background(), CreateWorkspaceRequest{
+		WorkspaceID:      "ws-alpha",
+		Name:             "Alpha Lab",
+		BillingAccountID: "acct-owner",
+		PackageID:        "basic",
+		Token:            "share-token",
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !errors.Is(err, providerErr) {
+		t.Fatalf("error does not preserve provider error: %v", err)
+	}
+	assertCalls(t, fabricPort.calls, []string{
+		"create_storage",
+		"create_compute",
+		"attach_storage",
+		"create_route",
+		"destroy_route",
+		"destroy_compute",
+	})
+	if fabricPort.destroyRoute.WorkspaceID != "ws-alpha" {
+		t.Fatalf("destroy route workspace id = %q", fabricPort.destroyRoute.WorkspaceID)
+	}
+	if fabricPort.destroyCompute.ComputeID != "cmp-ws-alpha" {
+		t.Fatalf("destroy compute id = %q", fabricPort.destroyCompute.ComputeID)
+	}
+}
+
 type recordingFabric struct {
 	calls []string
 

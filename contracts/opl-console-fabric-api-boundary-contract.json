@@ -15,6 +15,7 @@
     "DetachStorage",
     "DestroyStorage",
     "CreateWorkspaceRoute",
+    "DestroyWorkspaceRoute",
     "ResetWorkspaceToken",
     "DeleteWorkspaceToken",
     "InspectRuntime"

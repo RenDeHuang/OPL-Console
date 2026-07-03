@@ -54,9 +54,7 @@ func (s *Service) CreateWorkspace(ctx context.Context, request CreateWorkspaceRe
 		WorkspaceID: request.WorkspaceID, WorkspaceName: request.Name, ComputeID: computeID, Token: request.Token,
 	})
 	if err != nil {
-		if route.ProviderResourceID != "" {
-			_ = s.fabric.DestroyWorkspaceRoute(ctx, fabric.DestroyWorkspaceRouteRequest{WorkspaceID: request.WorkspaceID})
-		}
+		_ = s.fabric.DestroyWorkspaceRoute(ctx, fabric.DestroyWorkspaceRouteRequest{WorkspaceID: request.WorkspaceID})
 		_ = s.fabric.DestroyCompute(ctx, fabric.DestroyComputeRequest{ComputeID: computeID})
 		return CreateWorkspaceResult{}, fmt.Errorf("create workspace route: %w", err)
 	}
