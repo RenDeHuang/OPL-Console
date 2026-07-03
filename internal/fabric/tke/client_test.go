@@ -295,6 +295,81 @@ func TestCreateWorkspaceRouteRestoresExistingTokenSecretWhenIngressCreateFails(t
 	}
 }
 
+func TestCreateWorkspaceRouteReturnsRollbackDeleteErrorWhenNewTokenSecretRollbackFails(t *testing.T) {
+	ingressErr := errors.New("ingress create failed")
+	rollbackErr := errors.New("secret delete failed")
+	clientset := fake.NewSimpleClientset()
+	clientset.PrependReactor("create", "ingresses", func(action clientgotesting.Action) (bool, runtime.Object, error) {
+		return true, nil, ingressErr
+	})
+	clientset.PrependReactor("delete", "secrets", func(action clientgotesting.Action) (bool, runtime.Object, error) {
+		return true, nil, rollbackErr
+	})
+	client := New(testConfig(), clientset)
+
+	_, err := client.CreateWorkspaceRoute(context.Background(), fabric.CreateRouteRequest{
+		WorkspaceID:   "ws-alpha",
+		WorkspaceName: "Alpha",
+		ComputeID:     "cmp-ws-alpha",
+		Token:         "token-1",
+	})
+	if err == nil {
+		t.Fatal("create workspace route error = nil")
+	}
+	if !errors.Is(err, ingressErr) {
+		t.Fatalf("error does not preserve ingress error: %v", err)
+	}
+	if !errors.Is(err, rollbackErr) {
+		t.Fatalf("error does not include rollback error: %v", err)
+	}
+	if !strings.Contains(err.Error(), "rollback token secret") {
+		t.Fatalf("error does not include rollback context: %v", err)
+	}
+}
+
+func TestCreateWorkspaceRouteReturnsRollbackRestoreErrorWhenExistingTokenSecretRollbackFails(t *testing.T) {
+	ingressErr := errors.New("ingress create failed")
+	rollbackErr := errors.New("secret restore failed")
+	updateCount := 0
+	clientset := fake.NewSimpleClientset(&corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "workspace-ws-alpha-token",
+			Namespace: "opl-cloud",
+		},
+		Data: map[string][]byte{"token": []byte("old-token")},
+	})
+	clientset.PrependReactor("create", "ingresses", func(action clientgotesting.Action) (bool, runtime.Object, error) {
+		return true, nil, ingressErr
+	})
+	clientset.PrependReactor("update", "secrets", func(action clientgotesting.Action) (bool, runtime.Object, error) {
+		updateCount++
+		if updateCount == 2 {
+			return true, nil, rollbackErr
+		}
+		return false, nil, nil
+	})
+	client := New(testConfig(), clientset)
+
+	_, err := client.CreateWorkspaceRoute(context.Background(), fabric.CreateRouteRequest{
+		WorkspaceID:   "ws-alpha",
+		WorkspaceName: "Alpha",
+		ComputeID:     "cmp-ws-alpha",
+		Token:         "new-token",
+	})
+	if err == nil {
+		t.Fatal("create workspace route error = nil")
+	}
+	if !errors.Is(err, ingressErr) {
+		t.Fatalf("error does not preserve ingress error: %v", err)
+	}
+	if !errors.Is(err, rollbackErr) {
+		t.Fatalf("error does not include rollback error: %v", err)
+	}
+	if !strings.Contains(err.Error(), "rollback token secret") {
+		t.Fatalf("error does not include rollback context: %v", err)
+	}
+}
+
 func TestDNS1123NameAddsHashWhenSanitizationChangesValue(t *testing.T) {
 	rawIDs := []string{"WS_ALPHA", "ws-alpha", "ws.alpha", "ws alpha"}
 	names := map[string]string{}

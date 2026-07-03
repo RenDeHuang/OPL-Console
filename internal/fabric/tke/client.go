@@ -210,7 +210,13 @@ func (c *Client) CreateWorkspaceRoute(ctx context.Context, request fabric.Create
 	}
 
 	if _, err := c.client.NetworkingV1().Ingresses(c.cfg.Namespace).Create(ctx, ingress, metav1.CreateOptions{}); err != nil {
-		_ = c.rollbackTokenSecret(ctx, tokenUpsert)
+		rollbackErr := c.rollbackTokenSecret(ctx, tokenUpsert)
+		if rollbackErr != nil {
+			return fabric.RuntimeHandle{}, errors.Join(
+				fmt.Errorf("create ingress: %w", err),
+				fmt.Errorf("rollback token secret: %w", rollbackErr),
+			)
+		}
 		return fabric.RuntimeHandle{}, fmt.Errorf("create ingress: %w", err)
 	}
 

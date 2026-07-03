@@ -138,7 +138,7 @@ func TestCreateWorkspaceWrapsAttachErrorAndDestroysComputeOnly(t *testing.T) {
 	}
 }
 
-func TestCreateWorkspaceWrapsRouteErrorAndDestroysRouteAndComputeOnly(t *testing.T) {
+func TestCreateWorkspaceWrapsRouteErrorAndDestroysComputeOnly(t *testing.T) {
 	providerErr := errors.New("provider route failed")
 	fabricPort := &recordingFabric{
 		route:          fabric.RuntimeHandle{ProviderResourceID: "local-route/ws-alpha"},
@@ -167,18 +167,14 @@ func TestCreateWorkspaceWrapsRouteErrorAndDestroysRouteAndComputeOnly(t *testing
 		"create_compute",
 		"attach_storage",
 		"create_route",
-		"destroy_route",
 		"destroy_compute",
 	})
-	if fabricPort.destroyRoute.WorkspaceID != "ws-alpha" {
-		t.Fatalf("destroy route workspace id = %q", fabricPort.destroyRoute.WorkspaceID)
-	}
 	if fabricPort.destroyCompute.ComputeID != "cmp-ws-alpha" {
 		t.Fatalf("destroy compute id = %q", fabricPort.destroyCompute.ComputeID)
 	}
 }
 
-func TestCreateWorkspaceDestroysRouteOnRouteErrorWithEmptyHandle(t *testing.T) {
+func TestCreateWorkspaceDoesNotDestroyRouteOnRouteErrorWithEmptyHandle(t *testing.T) {
 	providerErr := errors.New("provider route failed")
 	fabricPort := &recordingFabric{createRouteErr: providerErr}
 	service := NewService(fabricPort)
@@ -201,12 +197,8 @@ func TestCreateWorkspaceDestroysRouteOnRouteErrorWithEmptyHandle(t *testing.T) {
 		"create_compute",
 		"attach_storage",
 		"create_route",
-		"destroy_route",
 		"destroy_compute",
 	})
-	if fabricPort.destroyRoute.WorkspaceID != "ws-alpha" {
-		t.Fatalf("destroy route workspace id = %q", fabricPort.destroyRoute.WorkspaceID)
-	}
 	if fabricPort.destroyCompute.ComputeID != "cmp-ws-alpha" {
 		t.Fatalf("destroy compute id = %q", fabricPort.destroyCompute.ComputeID)
 	}
