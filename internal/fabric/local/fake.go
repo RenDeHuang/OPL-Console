@@ -10,6 +10,8 @@ import (
 
 type Fake struct{}
 
+var _ fabric.Port = (*Fake)(nil)
+
 func New() *Fake {
 	return &Fake{}
 }
@@ -24,6 +26,14 @@ func (f *Fake) CreateStorage(ctx context.Context, request fabric.CreateStorageRe
 
 func (f *Fake) AttachStorage(ctx context.Context, request fabric.AttachStorageRequest) (fabric.RuntimeHandle, error) {
 	return fabric.RuntimeHandle{ProviderResourceID: fmt.Sprintf("%s:%s", request.ComputeID, request.StorageID), Status: "attached"}, nil
+}
+
+func (f *Fake) DestroyCompute(ctx context.Context, request fabric.DestroyComputeRequest) error {
+	return nil
+}
+
+func (f *Fake) DestroyStorage(ctx context.Context, request fabric.DestroyStorageRequest) error {
+	return nil
 }
 
 func (f *Fake) CreateWorkspaceRoute(ctx context.Context, request fabric.CreateRouteRequest) (fabric.RuntimeHandle, error) {

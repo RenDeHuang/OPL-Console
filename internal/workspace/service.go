@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/RenDeHuang/opl-console/internal/fabric"
 )
@@ -36,23 +37,31 @@ func (s *Service) CreateWorkspace(ctx context.Context, request CreateWorkspaceRe
 	if _, err := s.fabric.CreateStorage(ctx, fabric.CreateStorageRequest{
 		StorageID: storageID, BillingAccountID: request.BillingAccountID, Package: plan,
 	}); err != nil {
-		return CreateWorkspaceResult{}, err
+		return CreateWorkspaceResult{}, fmt.Errorf("create storage: %w", err)
 	}
 	if _, err := s.fabric.CreateCompute(ctx, fabric.CreateComputeRequest{
 		ComputeID: computeID, BillingAccountID: request.BillingAccountID, Package: plan,
 	}); err != nil {
-		return CreateWorkspaceResult{}, err
+		_ = s.fabric.DestroyStorage(ctx, fabric.DestroyStorageRequest{StorageID: storageID})
+		return CreateWorkspaceResult{}, fmt.Errorf("create compute: %w", err)
 	}
 	if _, err := s.fabric.AttachStorage(ctx, fabric.AttachStorageRequest{
 		AttachmentID: attachmentID, ComputeID: computeID, StorageID: storageID, MountPath: "/data",
 	}); err != nil {
-		return CreateWorkspaceResult{}, err
+		s.cleanupRuntime(ctx, computeID, storageID)
+		return CreateWorkspaceResult{}, fmt.Errorf("attach storage: %w", err)
 	}
 	route, err := s.fabric.CreateWorkspaceRoute(ctx, fabric.CreateRouteRequest{
 		WorkspaceID: request.WorkspaceID, WorkspaceName: request.Name, ComputeID: computeID, Token: request.Token,
 	})
 	if err != nil {
-		return CreateWorkspaceResult{}, err
+		s.cleanupRuntime(ctx, computeID, storageID)
+		return CreateWorkspaceResult{}, fmt.Errorf("create workspace route: %w", err)
 	}
 	return CreateWorkspaceResult{WorkspaceID: request.WorkspaceID, URL: route.URL}, nil
+}
+
+func (s *Service) cleanupRuntime(ctx context.Context, computeID, storageID string) {
+	_ = s.fabric.DestroyCompute(ctx, fabric.DestroyComputeRequest{ComputeID: computeID})
+	_ = s.fabric.DestroyStorage(ctx, fabric.DestroyStorageRequest{StorageID: storageID})
 }

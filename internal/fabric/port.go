@@ -28,6 +28,14 @@ type AttachStorageRequest struct {
 	MountPath    string
 }
 
+type DestroyComputeRequest struct {
+	ComputeID string
+}
+
+type DestroyStorageRequest struct {
+	StorageID string
+}
+
 type CreateRouteRequest struct {
 	WorkspaceID   string
 	WorkspaceName string
@@ -46,4 +54,6 @@ type Port interface {
 	CreateStorage(ctx context.Context, request CreateStorageRequest) (RuntimeHandle, error)
 	AttachStorage(ctx context.Context, request AttachStorageRequest) (RuntimeHandle, error)
 	CreateWorkspaceRoute(ctx context.Context, request CreateRouteRequest) (RuntimeHandle, error)
+	DestroyCompute(ctx context.Context, request DestroyComputeRequest) error
+	DestroyStorage(ctx context.Context, request DestroyStorageRequest) error
 }

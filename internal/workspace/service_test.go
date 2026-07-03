@@ -2,14 +2,19 @@ package workspace
 
 import (
 	"context"
+	"errors"
+	"reflect"
+	"strings"
 	"testing"
 
-	"github.com/RenDeHuang/opl-console/internal/fabric/local"
+	"github.com/RenDeHuang/opl-console/internal/fabric"
 )
 
 func TestCreateWorkspaceUsesFabricPort(t *testing.T) {
-	fabric := local.New()
-	service := NewService(fabric)
+	fabricPort := &recordingFabric{
+		route: fabric.RuntimeHandle{URL: "https://workspace.example/ws-alpha"},
+	}
+	service := NewService(fabricPort)
 
 	result, err := service.CreateWorkspace(context.Background(), CreateWorkspaceRequest{
 		WorkspaceID:      "ws-alpha",
@@ -24,7 +29,193 @@ func TestCreateWorkspaceUsesFabricPort(t *testing.T) {
 	if result.WorkspaceID != "ws-alpha" {
 		t.Fatalf("workspace id = %q", result.WorkspaceID)
 	}
-	if result.URL == "" {
-		t.Fatal("workspace URL is empty")
+	if result.URL != "https://workspace.example/ws-alpha" {
+		t.Fatalf("workspace URL = %q", result.URL)
+	}
+
+	assertCalls(t, fabricPort.calls, []string{
+		"create_storage",
+		"create_compute",
+		"attach_storage",
+		"create_route",
+	})
+	assertPackage(t, fabricPort.createStorage.Package)
+	assertPackage(t, fabricPort.createCompute.Package)
+	if fabricPort.createStorage.StorageID != "stg-ws-alpha" {
+		t.Fatalf("storage id = %q", fabricPort.createStorage.StorageID)
+	}
+	if fabricPort.createStorage.BillingAccountID != "acct-owner" {
+		t.Fatalf("storage billing account = %q", fabricPort.createStorage.BillingAccountID)
+	}
+	if fabricPort.createCompute.ComputeID != "cmp-ws-alpha" {
+		t.Fatalf("compute id = %q", fabricPort.createCompute.ComputeID)
+	}
+	if fabricPort.createCompute.BillingAccountID != "acct-owner" {
+		t.Fatalf("compute billing account = %q", fabricPort.createCompute.BillingAccountID)
+	}
+	if fabricPort.attachStorage.AttachmentID != "att-ws-alpha" {
+		t.Fatalf("attachment id = %q", fabricPort.attachStorage.AttachmentID)
+	}
+	if fabricPort.attachStorage.ComputeID != "cmp-ws-alpha" {
+		t.Fatalf("attachment compute id = %q", fabricPort.attachStorage.ComputeID)
+	}
+	if fabricPort.attachStorage.StorageID != "stg-ws-alpha" {
+		t.Fatalf("attachment storage id = %q", fabricPort.attachStorage.StorageID)
+	}
+	if fabricPort.attachStorage.MountPath != "/data" {
+		t.Fatalf("mount path = %q", fabricPort.attachStorage.MountPath)
+	}
+	if fabricPort.createRoute.WorkspaceID != "ws-alpha" {
+		t.Fatalf("route workspace id = %q", fabricPort.createRoute.WorkspaceID)
+	}
+	if fabricPort.createRoute.WorkspaceName != "Alpha Lab" {
+		t.Fatalf("route workspace name = %q", fabricPort.createRoute.WorkspaceName)
+	}
+	if fabricPort.createRoute.ComputeID != "cmp-ws-alpha" {
+		t.Fatalf("route compute id = %q", fabricPort.createRoute.ComputeID)
+	}
+	if fabricPort.createRoute.Token != "share-token" {
+		t.Fatalf("route token = %q", fabricPort.createRoute.Token)
+	}
+}
+
+func TestCreateWorkspaceWrapsComputeErrorAndCleansStorage(t *testing.T) {
+	providerErr := errors.New("provider compute failed")
+	fabricPort := &recordingFabric{createComputeErr: providerErr}
+	service := NewService(fabricPort)
+
+	_, err := service.CreateWorkspace(context.Background(), CreateWorkspaceRequest{
+		WorkspaceID:      "ws-alpha",
+		Name:             "Alpha Lab",
+		BillingAccountID: "acct-owner",
+		PackageID:        "basic",
+		Token:            "share-token",
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !errors.Is(err, providerErr) {
+		t.Fatalf("error does not preserve provider error: %v", err)
+	}
+	if !strings.Contains(err.Error(), "create compute") {
+		t.Fatalf("error does not include stage context: %v", err)
+	}
+	assertCalls(t, fabricPort.calls, []string{
+		"create_storage",
+		"create_compute",
+		"destroy_storage",
+	})
+	if fabricPort.destroyStorage.StorageID != "stg-ws-alpha" {
+		t.Fatalf("destroy storage id = %q", fabricPort.destroyStorage.StorageID)
+	}
+}
+
+func TestCreateWorkspaceWrapsRouteErrorAndCleansComputeAndStorage(t *testing.T) {
+	providerErr := errors.New("provider route failed")
+	fabricPort := &recordingFabric{createRouteErr: providerErr}
+	service := NewService(fabricPort)
+
+	_, err := service.CreateWorkspace(context.Background(), CreateWorkspaceRequest{
+		WorkspaceID:      "ws-alpha",
+		Name:             "Alpha Lab",
+		BillingAccountID: "acct-owner",
+		PackageID:        "basic",
+		Token:            "share-token",
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !errors.Is(err, providerErr) {
+		t.Fatalf("error does not preserve provider error: %v", err)
+	}
+	if !strings.Contains(err.Error(), "create workspace route") {
+		t.Fatalf("error does not include stage context: %v", err)
+	}
+	assertCalls(t, fabricPort.calls, []string{
+		"create_storage",
+		"create_compute",
+		"attach_storage",
+		"create_route",
+		"destroy_compute",
+		"destroy_storage",
+	})
+	if fabricPort.destroyCompute.ComputeID != "cmp-ws-alpha" {
+		t.Fatalf("destroy compute id = %q", fabricPort.destroyCompute.ComputeID)
+	}
+	if fabricPort.destroyStorage.StorageID != "stg-ws-alpha" {
+		t.Fatalf("destroy storage id = %q", fabricPort.destroyStorage.StorageID)
+	}
+}
+
+type recordingFabric struct {
+	calls []string
+
+	createStorage fabric.CreateStorageRequest
+	createCompute fabric.CreateComputeRequest
+	attachStorage fabric.AttachStorageRequest
+	createRoute   fabric.CreateRouteRequest
+
+	destroyCompute fabric.DestroyComputeRequest
+	destroyStorage fabric.DestroyStorageRequest
+
+	route fabric.RuntimeHandle
+
+	createComputeErr error
+	createRouteErr   error
+}
+
+func (f *recordingFabric) CreateCompute(ctx context.Context, request fabric.CreateComputeRequest) (fabric.RuntimeHandle, error) {
+	f.calls = append(f.calls, "create_compute")
+	f.createCompute = request
+	if f.createComputeErr != nil {
+		return fabric.RuntimeHandle{}, f.createComputeErr
+	}
+	return fabric.RuntimeHandle{ProviderResourceID: "local-compute/" + request.ComputeID, Status: "running"}, nil
+}
+
+func (f *recordingFabric) CreateStorage(ctx context.Context, request fabric.CreateStorageRequest) (fabric.RuntimeHandle, error) {
+	f.calls = append(f.calls, "create_storage")
+	f.createStorage = request
+	return fabric.RuntimeHandle{ProviderResourceID: "local-storage/" + request.StorageID, Status: "available"}, nil
+}
+
+func (f *recordingFabric) AttachStorage(ctx context.Context, request fabric.AttachStorageRequest) (fabric.RuntimeHandle, error) {
+	f.calls = append(f.calls, "attach_storage")
+	f.attachStorage = request
+	return fabric.RuntimeHandle{ProviderResourceID: request.ComputeID + ":" + request.StorageID, Status: "attached"}, nil
+}
+
+func (f *recordingFabric) CreateWorkspaceRoute(ctx context.Context, request fabric.CreateRouteRequest) (fabric.RuntimeHandle, error) {
+	f.calls = append(f.calls, "create_route")
+	f.createRoute = request
+	if f.createRouteErr != nil {
+		return fabric.RuntimeHandle{}, f.createRouteErr
+	}
+	return f.route, nil
+}
+
+func (f *recordingFabric) DestroyCompute(ctx context.Context, request fabric.DestroyComputeRequest) error {
+	f.calls = append(f.calls, "destroy_compute")
+	f.destroyCompute = request
+	return nil
+}
+
+func (f *recordingFabric) DestroyStorage(ctx context.Context, request fabric.DestroyStorageRequest) error {
+	f.calls = append(f.calls, "destroy_storage")
+	f.destroyStorage = request
+	return nil
+}
+
+func assertPackage(t *testing.T, plan fabric.PackagePlan) {
+	t.Helper()
+	if plan.ID != "basic" {
+		t.Fatalf("package id = %q", plan.ID)
+	}
+}
+
+func assertCalls(t *testing.T, got, want []string) {
+	t.Helper()
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("calls = %v, want %v", got, want)
 	}
 }
