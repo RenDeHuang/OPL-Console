@@ -8,8 +8,60 @@ body {
   margin: 0;
 }
 
+input,
+button {
+  font: inherit;
+}
+
+button {
+  border: 0;
+  background: #1769aa;
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.topbar {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 0 32px;
+  border-bottom: 1px solid #d9dee7;
+  background: #fff;
+}
+
+.topbar a {
+  color: #172033;
+  text-decoration: none;
+}
+
 .shell {
   max-width: 1120px;
   margin: 0 auto;
   padding: 32px;
+}
+
+.narrow {
+  max-width: 420px;
+}
+
+.panel {
+  background: #fff;
+  border: 1px solid #d9dee7;
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.panel label {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.panel input {
+  border: 1px solid #c7ceda;
+  border-radius: 6px;
+  padding: 10px 12px;
 }
