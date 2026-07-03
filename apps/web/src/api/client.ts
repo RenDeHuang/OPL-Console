@@ -2,6 +2,8 @@ export type Healthz = { ok: boolean };
 export type Readiness = { ready: boolean; checks: Record<string, boolean> };
 export type UserView = { id: string; email: string; role: string; status: string };
 export type OrganizationView = { id: string; name: string; status: string };
+export type TeamView = { id: string; organizationId: string; name: string; status: string };
+export type RoleView = { id: string; organizationId?: string; name: string; scope: string; permissions?: unknown };
 export type Me = { user: UserView; organization: OrganizationView };
 export type Session = { user: UserView; csrfToken: string; expiresAt: string };
 export type WorkspacePackage = {
@@ -21,6 +23,18 @@ export type ManagedWorkspace = {
   policy: string;
   url?: string;
   provider?: string;
+};
+export type ManagedResourceView = {
+  id: string;
+  organizationId: string;
+  resourceType: string;
+  resourceId: string;
+  displayName: string;
+  provider: string;
+  status: string;
+  policyState: string;
+  workspaceId?: string;
+  metadata?: unknown;
 };
 export type CreateWorkspacePayload = {
   workspaceId: string;
@@ -136,6 +150,10 @@ export const api = {
       body: JSON.stringify(payload)
     }),
   adminUsers: () => request<UserView[]>("/api/admin/users"),
+  adminOrganizations: () => request<OrganizationView[]>("/api/admin/organizations"),
+  adminTeams: () => request<TeamView[]>("/api/admin/teams"),
+  adminRoles: () => request<RoleView[]>("/api/admin/roles"),
+  adminResources: () => request<ManagedResourceView[]>("/api/admin/resources"),
   adminPolicies: () => request<PolicyView[]>("/api/admin/policies"),
   createPolicy: (payload: CreatePolicyPayload) =>
     request<PolicyView>("/api/admin/policies", {

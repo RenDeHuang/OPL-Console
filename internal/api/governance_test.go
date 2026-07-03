@@ -18,6 +18,10 @@ type fakeGovernanceService struct {
 	packages   []console.Package
 	workspaces []console.ManagedWorkspace
 	adminUsers []console.UserView
+	orgs       []console.OrganizationView
+	teams      []console.TeamView
+	roles      []console.RoleView
+	resources  []console.ManagedResourceView
 	wallet     console.WalletView
 	ledger     []console.BillingLedgerEntryView
 	tickets    []console.SupportTicketView
@@ -43,6 +47,22 @@ func (f fakeGovernanceService) Workspaces(ctx context.Context, user auth.User) (
 
 func (f fakeGovernanceService) AdminUsers(ctx context.Context) ([]console.UserView, error) {
 	return f.adminUsers, nil
+}
+
+func (f fakeGovernanceService) AdminOrganizations(ctx context.Context) ([]console.OrganizationView, error) {
+	return f.orgs, nil
+}
+
+func (f fakeGovernanceService) AdminTeams(ctx context.Context) ([]console.TeamView, error) {
+	return f.teams, nil
+}
+
+func (f fakeGovernanceService) AdminRoles(ctx context.Context) ([]console.RoleView, error) {
+	return f.roles, nil
+}
+
+func (f fakeGovernanceService) AdminManagedResources(ctx context.Context) ([]console.ManagedResourceView, error) {
+	return f.resources, nil
 }
 
 func (f *fakeGovernanceService) Wallet(ctx context.Context, user auth.User) (console.WalletView, error) {
@@ -289,5 +309,37 @@ func TestAdminPolicyAndApprovalRoutes(t *testing.T) {
 	}
 	if governance.decision.ApprovalID != "approval-alpha" || governance.decision.Decision != "approved" {
 		t.Fatalf("decision = %#v", governance.decision)
+	}
+}
+
+func TestAdminGovernanceReadModelRoutes(t *testing.T) {
+	handler := NewRouter(Dependencies{
+		Auth: &fakeAuthService{session: auth.Session{
+			Token:     "session-token",
+			CSRFToken: "csrf-token",
+			ExpiresAt: time.Now().Add(time.Hour),
+			User:      auth.User{ID: "usr-admin", Email: "admin@opl.local", Role: auth.RoleAdmin, Status: auth.StatusActive},
+		}},
+		SessionCookieName: "opl_session",
+		Governance: &fakeGovernanceService{
+			orgs:      []console.OrganizationView{{ID: "org-alpha", Name: "Alpha Lab", Status: "active"}},
+			teams:     []console.TeamView{{ID: "team-alpha", OrganizationID: "org-alpha", Name: "Platform", Status: "active"}},
+			roles:     []console.RoleView{{ID: "role-alpha", OrganizationID: "org-alpha", Name: "Owner", Scope: "organization"}},
+			resources: []console.ManagedResourceView{{ID: "mrv-alpha", OrganizationID: "org-alpha", ResourceType: "compute", ResourceID: "cmp-alpha", Status: "running"}},
+		},
+	})
+
+	for _, path := range []string{"/api/admin/organizations", "/api/admin/teams", "/api/admin/roles", "/api/admin/resources"} {
+		t.Run(path, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, path, nil)
+			request.AddCookie(&http.Cookie{Name: "opl_session", Value: "session-token"})
+			response := httptest.NewRecorder()
+
+			handler.ServeHTTP(response, request)
+
+			if response.Code != http.StatusOK {
+				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+			}
+		})
 	}
 }

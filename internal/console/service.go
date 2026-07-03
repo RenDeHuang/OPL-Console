@@ -12,6 +12,10 @@ type Repository interface {
 	Packages(ctx context.Context) ([]Package, error)
 	WorkspacesForUser(ctx context.Context, userID string) ([]ManagedWorkspace, error)
 	AdminUsers(ctx context.Context) ([]UserView, error)
+	AdminOrganizations(ctx context.Context) ([]OrganizationView, error)
+	AdminTeams(ctx context.Context) ([]TeamView, error)
+	AdminRoles(ctx context.Context) ([]RoleView, error)
+	AdminManagedResources(ctx context.Context) ([]ManagedResourceView, error)
 	WalletForUser(ctx context.Context, userID string) (WalletView, error)
 	BillingLedgerForUser(ctx context.Context, userID string) ([]BillingLedgerEntryView, error)
 	SupportTicketsForUser(ctx context.Context, userID string) ([]SupportTicketView, error)
@@ -52,6 +56,22 @@ func (s *Service) Workspaces(ctx context.Context, user auth.User) ([]ManagedWork
 
 func (s *Service) AdminUsers(ctx context.Context) ([]UserView, error) {
 	return s.repo.AdminUsers(ctx)
+}
+
+func (s *Service) AdminOrganizations(ctx context.Context) ([]OrganizationView, error) {
+	return s.repo.AdminOrganizations(ctx)
+}
+
+func (s *Service) AdminTeams(ctx context.Context) ([]TeamView, error) {
+	return s.repo.AdminTeams(ctx)
+}
+
+func (s *Service) AdminRoles(ctx context.Context) ([]RoleView, error) {
+	return s.repo.AdminRoles(ctx)
+}
+
+func (s *Service) AdminManagedResources(ctx context.Context) ([]ManagedResourceView, error) {
+	return s.repo.AdminManagedResources(ctx)
 }
 
 func (s *Service) Wallet(ctx context.Context, user auth.User) (WalletView, error) {

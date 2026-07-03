@@ -15,6 +15,21 @@ type OrganizationView struct {
 	Status string `json:"status"`
 }
 
+type TeamView struct {
+	ID             string `json:"id"`
+	OrganizationID string `json:"organizationId"`
+	Name           string `json:"name"`
+	Status         string `json:"status"`
+}
+
+type RoleView struct {
+	ID             string          `json:"id"`
+	OrganizationID string          `json:"organizationId,omitempty"`
+	Name           string          `json:"name"`
+	Scope          string          `json:"scope"`
+	Permissions    json.RawMessage `json:"permissions,omitempty"`
+}
+
 type Me struct {
 	User         UserView         `json:"user"`
 	Organization OrganizationView `json:"organization"`
@@ -38,6 +53,19 @@ type ManagedWorkspace struct {
 	Policy   string `json:"policy"`
 	URL      string `json:"url,omitempty"`
 	Provider string `json:"provider,omitempty"`
+}
+
+type ManagedResourceView struct {
+	ID             string          `json:"id"`
+	OrganizationID string          `json:"organizationId"`
+	ResourceType   string          `json:"resourceType"`
+	ResourceID     string          `json:"resourceId"`
+	DisplayName    string          `json:"displayName"`
+	Provider       string          `json:"provider"`
+	Status         string          `json:"status"`
+	PolicyState    string          `json:"policyState"`
+	WorkspaceID    string          `json:"workspaceId,omitempty"`
+	Metadata       json.RawMessage `json:"metadata,omitempty"`
 }
 
 type WalletView struct {

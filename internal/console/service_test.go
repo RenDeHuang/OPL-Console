@@ -13,6 +13,10 @@ type fakeRepository struct {
 	packages     []Package
 	workspaces   []ManagedWorkspace
 	adminUsers   []UserView
+	orgs         []OrganizationView
+	teams        []TeamView
+	roles        []RoleView
+	resources    []ManagedResourceView
 	wallet       WalletView
 	ledger       []BillingLedgerEntryView
 	tickets      []SupportTicketView
@@ -42,6 +46,22 @@ func (f fakeRepository) WorkspacesForUser(ctx context.Context, userID string) ([
 
 func (f fakeRepository) AdminUsers(ctx context.Context) ([]UserView, error) {
 	return f.adminUsers, nil
+}
+
+func (f fakeRepository) AdminOrganizations(ctx context.Context) ([]OrganizationView, error) {
+	return f.orgs, nil
+}
+
+func (f fakeRepository) AdminTeams(ctx context.Context) ([]TeamView, error) {
+	return f.teams, nil
+}
+
+func (f fakeRepository) AdminRoles(ctx context.Context) ([]RoleView, error) {
+	return f.roles, nil
+}
+
+func (f fakeRepository) AdminManagedResources(ctx context.Context) ([]ManagedResourceView, error) {
+	return f.resources, nil
 }
 
 func (f *fakeRepository) WalletForUser(ctx context.Context, userID string) (WalletView, error) {

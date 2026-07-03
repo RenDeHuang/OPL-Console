@@ -125,6 +125,106 @@ func (s *GovernanceStore) AdminUsers(ctx context.Context) ([]console.UserView, e
 	return users, rows.Err()
 }
 
+func (s *GovernanceStore) AdminOrganizations(ctx context.Context) ([]console.OrganizationView, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, name, status
+		FROM organizations
+		ORDER BY created_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var organizations []console.OrganizationView
+	for rows.Next() {
+		var organization console.OrganizationView
+		if err := rows.Scan(&organization.ID, &organization.Name, &organization.Status); err != nil {
+			return nil, err
+		}
+		organizations = append(organizations, organization)
+	}
+	return organizations, rows.Err()
+}
+
+func (s *GovernanceStore) AdminTeams(ctx context.Context) ([]console.TeamView, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, organization_id, name, status
+		FROM teams
+		ORDER BY created_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var teams []console.TeamView
+	for rows.Next() {
+		var team console.TeamView
+		if err := rows.Scan(&team.ID, &team.OrganizationID, &team.Name, &team.Status); err != nil {
+			return nil, err
+		}
+		teams = append(teams, team)
+	}
+	return teams, rows.Err()
+}
+
+func (s *GovernanceStore) AdminRoles(ctx context.Context) ([]console.RoleView, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, COALESCE(organization_id, ''), name, scope, permissions
+		FROM roles
+		ORDER BY created_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var roles []console.RoleView
+	for rows.Next() {
+		var role console.RoleView
+		if err := rows.Scan(&role.ID, &role.OrganizationID, &role.Name, &role.Scope, &role.Permissions); err != nil {
+			return nil, err
+		}
+		roles = append(roles, role)
+	}
+	return roles, rows.Err()
+}
+
+func (s *GovernanceStore) AdminManagedResources(ctx context.Context) ([]console.ManagedResourceView, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, organization_id, resource_type, resource_id, display_name,
+		       provider, status, policy_state, COALESCE(workspace_id, ''), metadata
+		FROM managed_resource_views
+		ORDER BY updated_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var resources []console.ManagedResourceView
+	for rows.Next() {
+		var resource console.ManagedResourceView
+		if err := rows.Scan(
+			&resource.ID,
+			&resource.OrganizationID,
+			&resource.ResourceType,
+			&resource.ResourceID,
+			&resource.DisplayName,
+			&resource.Provider,
+			&resource.Status,
+			&resource.PolicyState,
+			&resource.WorkspaceID,
+			&resource.Metadata,
+		); err != nil {
+			return nil, err
+		}
+		resources = append(resources, resource)
+	}
+	return resources, rows.Err()
+}
+
 func (s *GovernanceStore) WalletForUser(ctx context.Context, userID string) (console.WalletView, error) {
 	var wallet console.WalletView
 	err := s.pool.QueryRow(ctx, `

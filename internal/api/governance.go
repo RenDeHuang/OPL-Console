@@ -15,6 +15,10 @@ type GovernanceService interface {
 	Packages(ctx context.Context) ([]console.Package, error)
 	Workspaces(ctx context.Context, user auth.User) ([]console.ManagedWorkspace, error)
 	AdminUsers(ctx context.Context) ([]console.UserView, error)
+	AdminOrganizations(ctx context.Context) ([]console.OrganizationView, error)
+	AdminTeams(ctx context.Context) ([]console.TeamView, error)
+	AdminRoles(ctx context.Context) ([]console.RoleView, error)
+	AdminManagedResources(ctx context.Context) ([]console.ManagedResourceView, error)
 	Wallet(ctx context.Context, user auth.User) (console.WalletView, error)
 	BillingLedger(ctx context.Context, user auth.User) ([]console.BillingLedgerEntryView, error)
 	SupportTickets(ctx context.Context, user auth.User) ([]console.SupportTicketView, error)
@@ -74,6 +78,27 @@ func mountGovernanceRoutes(router Router, deps Dependencies) {
 			return
 		}
 		writeJSON(w, http.StatusOK, result)
+	})
+
+	router.Get("/api/admin/organizations", func(w http.ResponseWriter, r *http.Request) {
+		adminReadModel(w, r, deps, func(ctx context.Context, service GovernanceService) (any, error) {
+			return service.AdminOrganizations(ctx)
+		})
+	})
+	router.Get("/api/admin/teams", func(w http.ResponseWriter, r *http.Request) {
+		adminReadModel(w, r, deps, func(ctx context.Context, service GovernanceService) (any, error) {
+			return service.AdminTeams(ctx)
+		})
+	})
+	router.Get("/api/admin/roles", func(w http.ResponseWriter, r *http.Request) {
+		adminReadModel(w, r, deps, func(ctx context.Context, service GovernanceService) (any, error) {
+			return service.AdminRoles(ctx)
+		})
+	})
+	router.Get("/api/admin/resources", func(w http.ResponseWriter, r *http.Request) {
+		adminReadModel(w, r, deps, func(ctx context.Context, service GovernanceService) (any, error) {
+			return service.AdminManagedResources(ctx)
+		})
 	})
 
 	router.Get("/api/billing/wallet", func(w http.ResponseWriter, r *http.Request) {
@@ -203,6 +228,18 @@ func decideApproval(w http.ResponseWriter, r *http.Request, deps Dependencies, d
 	writeJSON(w, http.StatusOK, result)
 }
 
+func adminReadModel(w http.ResponseWriter, r *http.Request, deps Dependencies, read func(context.Context, GovernanceService) (any, error)) {
+	if _, ok := requireAdmin(w, r, deps); !ok {
+		return
+	}
+	result, err := read(r.Context(), governanceService(deps))
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read_model_failed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
 func requireOwner(w http.ResponseWriter, r *http.Request, deps Dependencies) (auth.Session, bool) {
 	session, ok := sessionFromRequest(w, r, deps)
 	if !ok {
@@ -279,6 +316,22 @@ func (emptyGovernanceService) Workspaces(ctx context.Context, user auth.User) ([
 
 func (emptyGovernanceService) AdminUsers(ctx context.Context) ([]console.UserView, error) {
 	return []console.UserView{}, nil
+}
+
+func (emptyGovernanceService) AdminOrganizations(ctx context.Context) ([]console.OrganizationView, error) {
+	return []console.OrganizationView{}, nil
+}
+
+func (emptyGovernanceService) AdminTeams(ctx context.Context) ([]console.TeamView, error) {
+	return []console.TeamView{}, nil
+}
+
+func (emptyGovernanceService) AdminRoles(ctx context.Context) ([]console.RoleView, error) {
+	return []console.RoleView{}, nil
+}
+
+func (emptyGovernanceService) AdminManagedResources(ctx context.Context) ([]console.ManagedResourceView, error) {
+	return []console.ManagedResourceView{}, nil
 }
 
 func (emptyGovernanceService) Wallet(ctx context.Context, user auth.User) (console.WalletView, error) {
