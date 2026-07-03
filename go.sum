@@ -1,0 +1,6 @@
+github.com/go-chi/chi/v5 v5.2.1/go.mod h1:L2yAIGWB3H+phAw1NxKwWM+7eUH/lU8pOMm5hHcoops=
+github.com/jackc/pgx/v5 v5.7.2/go.mod h1:ncY89UGWxg82EykZUwSpUKEfccBGGYq1xjrOpsbsfGQ=
+github.com/pressly/goose/v3 v3.24.1/go.mod h1:rEWreU9uVtt0DHCyLzF9gRcWiiTF/V+528DV+4DORug=
+k8s.io/api v0.31.4/go.mod h1:d+7vgXLvmcdT1BCo79VEgJxHHryww3V5np2OYTr6jdw=
+k8s.io/apimachinery v0.31.4/go.mod h1:rsPdaZJfTfLsNJSQzNHQvYoTmxhoOEofxtOsF3rtsMo=
+k8s.io/client-go v0.31.4/go.mod h1:kvuMro4sFYIa8sulL5Gi5GFqUPvfH2O/dXuKstbaaeg=

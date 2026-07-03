@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "scripts": {
+    "test": "make test",
+    "build": "make build",
+    "dev:web": "npm --prefix apps/web run dev",
+    "dev:api": "go run ./cmd/console-api"
+  }
+}
