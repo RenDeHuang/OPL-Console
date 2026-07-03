@@ -2,10 +2,12 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 
 	"github.com/RenDeHuang/opl-console/internal/auth"
 	"github.com/RenDeHuang/opl-console/internal/console"
+	"github.com/go-chi/chi/v5"
 )
 
 type GovernanceService interface {
@@ -13,6 +15,14 @@ type GovernanceService interface {
 	Packages(ctx context.Context) ([]console.Package, error)
 	Workspaces(ctx context.Context, user auth.User) ([]console.ManagedWorkspace, error)
 	AdminUsers(ctx context.Context) ([]console.UserView, error)
+	Wallet(ctx context.Context, user auth.User) (console.WalletView, error)
+	BillingLedger(ctx context.Context, user auth.User) ([]console.BillingLedgerEntryView, error)
+	SupportTickets(ctx context.Context, user auth.User) ([]console.SupportTicketView, error)
+	CreateSupportTicket(ctx context.Context, user auth.User, request console.CreateSupportTicketRequest) (console.SupportTicketView, error)
+	AdminPolicies(ctx context.Context) ([]console.PolicyView, error)
+	CreatePolicy(ctx context.Context, user auth.User, request console.CreatePolicyRequest) (console.PolicyView, error)
+	AdminApprovals(ctx context.Context) ([]console.ApprovalView, error)
+	DecideApproval(ctx context.Context, user auth.User, request console.ApprovalDecisionRequest) (console.ApprovalView, error)
 }
 
 func mountGovernanceRoutes(router Router, deps Dependencies) {
@@ -65,6 +75,132 @@ func mountGovernanceRoutes(router Router, deps Dependencies) {
 		}
 		writeJSON(w, http.StatusOK, result)
 	})
+
+	router.Get("/api/billing/wallet", func(w http.ResponseWriter, r *http.Request) {
+		session, ok := requireOwner(w, r, deps)
+		if !ok {
+			return
+		}
+		result, err := governanceService(deps).Wallet(r.Context(), session.User)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read_model_failed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
+	})
+
+	router.Get("/api/billing/ledger", func(w http.ResponseWriter, r *http.Request) {
+		session, ok := requireOwner(w, r, deps)
+		if !ok {
+			return
+		}
+		result, err := governanceService(deps).BillingLedger(r.Context(), session.User)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read_model_failed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
+	})
+
+	router.Get("/api/support/tickets", func(w http.ResponseWriter, r *http.Request) {
+		session, ok := requireOwner(w, r, deps)
+		if !ok {
+			return
+		}
+		result, err := governanceService(deps).SupportTickets(r.Context(), session.User)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read_model_failed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
+	})
+
+	router.Post("/api/support/tickets", func(w http.ResponseWriter, r *http.Request) {
+		session, ok := requireOwner(w, r, deps)
+		if !ok {
+			return
+		}
+		var payload console.CreateSupportTicketRequest
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_json"})
+			return
+		}
+		result, err := governanceService(deps).CreateSupportTicket(r.Context(), session.User, payload)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "support_ticket_create_failed"})
+			return
+		}
+		writeJSON(w, http.StatusCreated, result)
+	})
+
+	router.Get("/api/admin/policies", func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := requireAdmin(w, r, deps); !ok {
+			return
+		}
+		result, err := governanceService(deps).AdminPolicies(r.Context())
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read_model_failed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
+	})
+
+	router.Post("/api/admin/policies", func(w http.ResponseWriter, r *http.Request) {
+		session, ok := requireAdmin(w, r, deps)
+		if !ok {
+			return
+		}
+		var payload console.CreatePolicyRequest
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_json"})
+			return
+		}
+		result, err := governanceService(deps).CreatePolicy(r.Context(), session.User, payload)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "policy_create_failed"})
+			return
+		}
+		writeJSON(w, http.StatusCreated, result)
+	})
+
+	router.Get("/api/admin/approvals", func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := requireAdmin(w, r, deps); !ok {
+			return
+		}
+		result, err := governanceService(deps).AdminApprovals(r.Context())
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read_model_failed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
+	})
+
+	router.Post("/api/admin/approvals/{id}/approve", func(w http.ResponseWriter, r *http.Request) {
+		decideApproval(w, r, deps, "approved")
+	})
+	router.Post("/api/admin/approvals/{id}/reject", func(w http.ResponseWriter, r *http.Request) {
+		decideApproval(w, r, deps, "rejected")
+	})
+}
+
+func decideApproval(w http.ResponseWriter, r *http.Request, deps Dependencies, decision string) {
+	session, ok := requireAdmin(w, r, deps)
+	if !ok {
+		return
+	}
+	var payload console.ApprovalDecisionRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_json"})
+		return
+	}
+	payload.ApprovalID = chi.URLParam(r, "id")
+	payload.Decision = decision
+	result, err := governanceService(deps).DecideApproval(r.Context(), session.User, payload)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "approval_decision_failed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func requireOwner(w http.ResponseWriter, r *http.Request, deps Dependencies) (auth.Session, bool) {
@@ -143,4 +279,36 @@ func (emptyGovernanceService) Workspaces(ctx context.Context, user auth.User) ([
 
 func (emptyGovernanceService) AdminUsers(ctx context.Context) ([]console.UserView, error) {
 	return []console.UserView{}, nil
+}
+
+func (emptyGovernanceService) Wallet(ctx context.Context, user auth.User) (console.WalletView, error) {
+	return console.WalletView{}, nil
+}
+
+func (emptyGovernanceService) BillingLedger(ctx context.Context, user auth.User) ([]console.BillingLedgerEntryView, error) {
+	return []console.BillingLedgerEntryView{}, nil
+}
+
+func (emptyGovernanceService) SupportTickets(ctx context.Context, user auth.User) ([]console.SupportTicketView, error) {
+	return []console.SupportTicketView{}, nil
+}
+
+func (emptyGovernanceService) CreateSupportTicket(ctx context.Context, user auth.User, request console.CreateSupportTicketRequest) (console.SupportTicketView, error) {
+	return console.SupportTicketView{}, nil
+}
+
+func (emptyGovernanceService) AdminPolicies(ctx context.Context) ([]console.PolicyView, error) {
+	return []console.PolicyView{}, nil
+}
+
+func (emptyGovernanceService) CreatePolicy(ctx context.Context, user auth.User, request console.CreatePolicyRequest) (console.PolicyView, error) {
+	return console.PolicyView{}, nil
+}
+
+func (emptyGovernanceService) AdminApprovals(ctx context.Context) ([]console.ApprovalView, error) {
+	return []console.ApprovalView{}, nil
+}
+
+func (emptyGovernanceService) DecideApproval(ctx context.Context, user auth.User, request console.ApprovalDecisionRequest) (console.ApprovalView, error) {
+	return console.ApprovalView{}, nil
 }

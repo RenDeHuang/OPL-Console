@@ -12,6 +12,14 @@ type Repository interface {
 	Packages(ctx context.Context) ([]Package, error)
 	WorkspacesForUser(ctx context.Context, userID string) ([]ManagedWorkspace, error)
 	AdminUsers(ctx context.Context) ([]UserView, error)
+	WalletForUser(ctx context.Context, userID string) (WalletView, error)
+	BillingLedgerForUser(ctx context.Context, userID string) ([]BillingLedgerEntryView, error)
+	SupportTicketsForUser(ctx context.Context, userID string) ([]SupportTicketView, error)
+	CreateSupportTicket(ctx context.Context, userID string, request CreateSupportTicketRequest) (SupportTicketView, error)
+	AdminPolicies(ctx context.Context) ([]PolicyView, error)
+	CreatePolicy(ctx context.Context, actorUserID string, request CreatePolicyRequest) (PolicyView, error)
+	AdminApprovals(ctx context.Context) ([]ApprovalView, error)
+	DecideApproval(ctx context.Context, actorUserID string, request ApprovalDecisionRequest) (ApprovalView, error)
 }
 
 type Service struct {
@@ -44,4 +52,36 @@ func (s *Service) Workspaces(ctx context.Context, user auth.User) ([]ManagedWork
 
 func (s *Service) AdminUsers(ctx context.Context) ([]UserView, error) {
 	return s.repo.AdminUsers(ctx)
+}
+
+func (s *Service) Wallet(ctx context.Context, user auth.User) (WalletView, error) {
+	return s.repo.WalletForUser(ctx, user.ID)
+}
+
+func (s *Service) BillingLedger(ctx context.Context, user auth.User) ([]BillingLedgerEntryView, error) {
+	return s.repo.BillingLedgerForUser(ctx, user.ID)
+}
+
+func (s *Service) SupportTickets(ctx context.Context, user auth.User) ([]SupportTicketView, error) {
+	return s.repo.SupportTicketsForUser(ctx, user.ID)
+}
+
+func (s *Service) CreateSupportTicket(ctx context.Context, user auth.User, request CreateSupportTicketRequest) (SupportTicketView, error) {
+	return s.repo.CreateSupportTicket(ctx, user.ID, request)
+}
+
+func (s *Service) AdminPolicies(ctx context.Context) ([]PolicyView, error) {
+	return s.repo.AdminPolicies(ctx)
+}
+
+func (s *Service) CreatePolicy(ctx context.Context, user auth.User, request CreatePolicyRequest) (PolicyView, error) {
+	return s.repo.CreatePolicy(ctx, user.ID, request)
+}
+
+func (s *Service) AdminApprovals(ctx context.Context) ([]ApprovalView, error) {
+	return s.repo.AdminApprovals(ctx)
+}
+
+func (s *Service) DecideApproval(ctx context.Context, user auth.User, request ApprovalDecisionRequest) (ApprovalView, error) {
+	return s.repo.DecideApproval(ctx, user.ID, request)
 }

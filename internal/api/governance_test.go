@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,6 +18,15 @@ type fakeGovernanceService struct {
 	packages   []console.Package
 	workspaces []console.ManagedWorkspace
 	adminUsers []console.UserView
+	wallet     console.WalletView
+	ledger     []console.BillingLedgerEntryView
+	tickets    []console.SupportTicketView
+	policies   []console.PolicyView
+	approvals  []console.ApprovalView
+
+	createdTicket console.CreateSupportTicketRequest
+	createdPolicy console.CreatePolicyRequest
+	decision      console.ApprovalDecisionRequest
 }
 
 func (f fakeGovernanceService) Me(ctx context.Context, user auth.User) (console.Me, error) {
@@ -35,6 +45,41 @@ func (f fakeGovernanceService) AdminUsers(ctx context.Context) ([]console.UserVi
 	return f.adminUsers, nil
 }
 
+func (f *fakeGovernanceService) Wallet(ctx context.Context, user auth.User) (console.WalletView, error) {
+	return f.wallet, nil
+}
+
+func (f *fakeGovernanceService) BillingLedger(ctx context.Context, user auth.User) ([]console.BillingLedgerEntryView, error) {
+	return f.ledger, nil
+}
+
+func (f *fakeGovernanceService) SupportTickets(ctx context.Context, user auth.User) ([]console.SupportTicketView, error) {
+	return f.tickets, nil
+}
+
+func (f *fakeGovernanceService) CreateSupportTicket(ctx context.Context, user auth.User, request console.CreateSupportTicketRequest) (console.SupportTicketView, error) {
+	f.createdTicket = request
+	return console.SupportTicketView{ID: "ticket-created", Subject: request.Subject, Status: "open"}, nil
+}
+
+func (f *fakeGovernanceService) AdminPolicies(ctx context.Context) ([]console.PolicyView, error) {
+	return f.policies, nil
+}
+
+func (f *fakeGovernanceService) CreatePolicy(ctx context.Context, user auth.User, request console.CreatePolicyRequest) (console.PolicyView, error) {
+	f.createdPolicy = request
+	return console.PolicyView{ID: "policy-created", Name: request.Name, PolicyType: request.PolicyType, Status: "active"}, nil
+}
+
+func (f *fakeGovernanceService) AdminApprovals(ctx context.Context) ([]console.ApprovalView, error) {
+	return f.approvals, nil
+}
+
+func (f *fakeGovernanceService) DecideApproval(ctx context.Context, user auth.User, request console.ApprovalDecisionRequest) (console.ApprovalView, error) {
+	f.decision = request
+	return console.ApprovalView{ID: request.ApprovalID, Status: request.Decision}, nil
+}
+
 func TestOwnerGovernanceRoutesRequireActiveOwnerSession(t *testing.T) {
 	authService := &fakeAuthService{session: auth.Session{
 		Token:     "session-token",
@@ -50,7 +95,7 @@ func TestOwnerGovernanceRoutesRequireActiveOwnerSession(t *testing.T) {
 	handler := NewRouter(Dependencies{
 		Auth:              authService,
 		SessionCookieName: "opl_session",
-		Governance: fakeGovernanceService{
+		Governance: &fakeGovernanceService{
 			me: console.Me{
 				User:         console.UserView{ID: "usr-owner", Email: "owner@opl.local", Role: "owner", Status: "active"},
 				Organization: console.OrganizationView{ID: "org-alpha", Name: "Alpha Lab", Status: "active"},
@@ -84,7 +129,7 @@ func TestOwnerGovernanceRoutesRejectMissingSession(t *testing.T) {
 	handler := NewRouter(Dependencies{
 		Auth:              &fakeAuthService{},
 		SessionCookieName: "opl_session",
-		Governance:        fakeGovernanceService{},
+		Governance:        &fakeGovernanceService{},
 	})
 	request := httptest.NewRequest(http.MethodGet, "/api/me", nil)
 	response := httptest.NewRecorder()
@@ -123,7 +168,7 @@ func TestAdminGovernanceRoutesRequireAdmin(t *testing.T) {
 					User:      tt.user,
 				}},
 				SessionCookieName: "opl_session",
-				Governance: fakeGovernanceService{
+				Governance: &fakeGovernanceService{
 					adminUsers: []console.UserView{{ID: "usr-admin", Email: "admin@opl.local", Role: "admin", Status: "active"}},
 				},
 			})
@@ -146,5 +191,103 @@ func TestAdminGovernanceRoutesRequireAdmin(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestOwnerBillingAndSupportRoutes(t *testing.T) {
+	governance := &fakeGovernanceService{
+		wallet:  console.WalletView{BillingAccountID: "billing-alpha", BalanceFen: 1000, FrozenFen: 250, AvailableFen: 750},
+		ledger:  []console.BillingLedgerEntryView{{ID: "ledger-alpha", Kind: "compute_hold", AmountFen: -250}},
+		tickets: []console.SupportTicketView{{ID: "ticket-alpha", Subject: "Need help", Status: "open"}},
+	}
+	handler := NewRouter(Dependencies{
+		Auth: &fakeAuthService{session: auth.Session{
+			Token:     "session-token",
+			CSRFToken: "csrf-token",
+			ExpiresAt: time.Now().Add(time.Hour),
+			User:      auth.User{ID: "usr-owner", Email: "owner@opl.local", Role: auth.RoleOwner, Status: auth.StatusActive},
+		}},
+		SessionCookieName: "opl_session",
+		Governance:        governance,
+	})
+
+	for _, path := range []string{"/api/billing/wallet", "/api/billing/ledger", "/api/support/tickets"} {
+		t.Run(path, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, path, nil)
+			request.AddCookie(&http.Cookie{Name: "opl_session", Value: "session-token"})
+			response := httptest.NewRecorder()
+
+			handler.ServeHTTP(response, request)
+
+			if response.Code != http.StatusOK {
+				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+			}
+		})
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/support/tickets", strings.NewReader(`{"subject":"Need help","body":"Workspace is blocked","workspaceId":"ws-alpha"}`))
+	request.AddCookie(&http.Cookie{Name: "opl_session", Value: "session-token"})
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if governance.createdTicket.Subject != "Need help" || governance.createdTicket.WorkspaceID != "ws-alpha" {
+		t.Fatalf("created ticket = %#v", governance.createdTicket)
+	}
+}
+
+func TestAdminPolicyAndApprovalRoutes(t *testing.T) {
+	governance := &fakeGovernanceService{
+		policies:  []console.PolicyView{{ID: "policy-alpha", Name: "Managed Workspace Approval", Status: "active"}},
+		approvals: []console.ApprovalView{{ID: "approval-alpha", Status: "pending"}},
+	}
+	handler := NewRouter(Dependencies{
+		Auth: &fakeAuthService{session: auth.Session{
+			Token:     "session-token",
+			CSRFToken: "csrf-token",
+			ExpiresAt: time.Now().Add(time.Hour),
+			User:      auth.User{ID: "usr-admin", Email: "admin@opl.local", Role: auth.RoleAdmin, Status: auth.StatusActive},
+		}},
+		SessionCookieName: "opl_session",
+		Governance:        governance,
+	})
+
+	for _, path := range []string{"/api/admin/policies", "/api/admin/approvals"} {
+		t.Run(path, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, path, nil)
+			request.AddCookie(&http.Cookie{Name: "opl_session", Value: "session-token"})
+			response := httptest.NewRecorder()
+
+			handler.ServeHTTP(response, request)
+
+			if response.Code != http.StatusOK {
+				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+			}
+		})
+	}
+
+	createPolicy := httptest.NewRequest(http.MethodPost, "/api/admin/policies", strings.NewReader(`{"organizationId":"org-alpha","name":"Managed Workspace Approval","policyType":"workspace_lifecycle","rules":{"requiresApproval":true}}`))
+	createPolicy.AddCookie(&http.Cookie{Name: "opl_session", Value: "session-token"})
+	createPolicyResponse := httptest.NewRecorder()
+	handler.ServeHTTP(createPolicyResponse, createPolicy)
+	if createPolicyResponse.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body = %s", createPolicyResponse.Code, createPolicyResponse.Body.String())
+	}
+	if governance.createdPolicy.OrganizationID != "org-alpha" || governance.createdPolicy.PolicyType != "workspace_lifecycle" {
+		t.Fatalf("created policy = %#v", governance.createdPolicy)
+	}
+
+	approve := httptest.NewRequest(http.MethodPost, "/api/admin/approvals/approval-alpha/approve", strings.NewReader(`{"decisionNote":"approved for pilot"}`))
+	approve.AddCookie(&http.Cookie{Name: "opl_session", Value: "session-token"})
+	approveResponse := httptest.NewRecorder()
+	handler.ServeHTTP(approveResponse, approve)
+	if approveResponse.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", approveResponse.Code, approveResponse.Body.String())
+	}
+	if governance.decision.ApprovalID != "approval-alpha" || governance.decision.Decision != "approved" {
+		t.Fatalf("decision = %#v", governance.decision)
 	}
 }
