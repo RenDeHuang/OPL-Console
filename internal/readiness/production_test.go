@@ -17,11 +17,15 @@ func TestProductionReadinessPassesWithRequiredInputs(t *testing.T) {
 		IngressClass:          "qcloud",
 		WorkspaceImage:        "ccr.ccs.tencentyun.com/opl/one-person-lab-app:20260704",
 		WorkspaceStorageClass: "cbs",
+		FabricProvider:        "tke",
 		ConsoleUsersJSON:      `[{"id":"usr-admin","email":"admin@medopl.cn","password":"StrongAdminPass2026!","role":"admin"}]`,
 	})
 
 	if !report.Ready {
 		t.Fatalf("ready = false, checks = %#v", report.Checks)
+	}
+	if !report.Checks["fabric_provider"] {
+		t.Fatalf("fabric_provider = false, checks = %#v", report.Checks)
 	}
 }
 
@@ -34,13 +38,14 @@ func TestProductionReadinessFailsClosedForMissingInputsAndDefaultAdmin(t *testin
 		IngressClass:          "nginx",
 		WorkspaceImage:        "ghcr.io/gaofeng21cn/one-person-lab-app:latest",
 		WorkspaceStorageClass: "cbs",
+		FabricProvider:        "local",
 		ConsoleUsersJSON:      `[{"id":"usr-admin-bootstrap","email":"admin@opl.local","password":"` + auth.DefaultAdminPassword + `","role":"admin"}]`,
 	})
 
 	if report.Ready {
 		t.Fatalf("ready = true, checks = %#v", report.Checks)
 	}
-	for _, check := range []string{"database_url", "public_url", "kube_config", "ingress_class", "workspace_image", "auth_seed"} {
+	for _, check := range []string{"database_url", "public_url", "kube_config", "ingress_class", "workspace_image", "fabric_provider", "auth_seed"} {
 		if report.Checks[check] {
 			t.Fatalf("%s = true, checks = %#v", check, report.Checks)
 		}

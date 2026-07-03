@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -10,7 +11,10 @@ import (
 	"github.com/RenDeHuang/opl-console/internal/auth"
 	"github.com/RenDeHuang/opl-console/internal/config"
 	"github.com/RenDeHuang/opl-console/internal/console"
+	"github.com/RenDeHuang/opl-console/internal/fabric"
 	"github.com/RenDeHuang/opl-console/internal/fabric/local"
+	"github.com/RenDeHuang/opl-console/internal/fabric/tke"
+	ledgerpostgres "github.com/RenDeHuang/opl-console/internal/ledger/postgres"
 	"github.com/RenDeHuang/opl-console/internal/readiness"
 	"github.com/RenDeHuang/opl-console/internal/store"
 	"github.com/RenDeHuang/opl-console/internal/workspace"
@@ -39,7 +43,15 @@ func main() {
 		Sessions: authStore,
 	})
 	governanceService := console.NewService(store.NewGovernanceStore(pool))
-	workspaceService := workspace.NewService(local.New())
+	fabricPort, err := buildFabricPort(cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	workspaceService := workspace.NewService(
+		fabricPort,
+		workspace.WithRepository(store.NewWorkspaceStore(pool)),
+		workspace.WithLedger(ledgerpostgres.New(pool)),
+	)
 
 	router := api.NewRouter(api.Dependencies{
 		Auth:              authService,
@@ -67,4 +79,20 @@ func main() {
 
 	log.Printf("OPL Console API listening on %s", cfg.Addr)
 	log.Fatal(server.ListenAndServe())
+}
+
+func buildFabricPort(cfg config.Config) (fabric.Port, error) {
+	switch cfg.FabricProvider {
+	case "", "local":
+		return local.New(), nil
+	case "tke":
+		return tke.NewFromKubeConfig(tke.Config{
+			Namespace:    cfg.KubeNamespace,
+			Image:        cfg.WorkspaceImage,
+			StorageClass: cfg.WorkspaceStorageClass,
+			IngressClass: cfg.IngressClass,
+		}, cfg.KubeconfigPath)
+	default:
+		return nil, fmt.Errorf("unsupported OPL_FABRIC_PROVIDER %q", cfg.FabricProvider)
+	}
 }

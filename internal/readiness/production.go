@@ -1,6 +1,7 @@
 package readiness
 
 import (
+	"os"
 	"strings"
 
 	"github.com/RenDeHuang/opl-console/internal/auth"
@@ -17,11 +18,12 @@ func Production(cfg config.Config) Report {
 		"database_url":            strings.TrimSpace(cfg.DatabaseURL) != "",
 		"public_url":              strings.HasPrefix(cfg.PublicURL, "https://") && !strings.Contains(cfg.PublicURL, "127.0.0.1"),
 		"workspace_domain":        strings.Contains(cfg.WorkspaceDomain, ".") && !strings.Contains(cfg.WorkspaceDomain, "localhost"),
-		"kube_config":             strings.TrimSpace(cfg.KubeconfigPath) != "",
+		"kube_config":             strings.TrimSpace(cfg.KubeconfigPath) != "" || inClusterServiceAccount(),
 		"kube_namespace":          strings.TrimSpace(cfg.KubeNamespace) != "",
 		"ingress_class":           cfg.IngressClass == "qcloud" || cfg.IngressClass == "nginx-production",
 		"workspace_image":         productionImage(cfg.WorkspaceImage),
 		"workspace_storage_class": strings.TrimSpace(cfg.WorkspaceStorageClass) != "",
+		"fabric_provider":         cfg.FabricProvider == "tke",
 		"auth_seed":               productionAuthSeed(cfg.ConsoleUsersJSON),
 	}
 	ready := true
@@ -29,6 +31,11 @@ func Production(cfg config.Config) Report {
 		ready = ready && ok
 	}
 	return Report{Ready: ready, Checks: checks}
+}
+
+func inClusterServiceAccount() bool {
+	_, err := os.Stat("/var/run/secrets/kubernetes.io/serviceaccount/token")
+	return err == nil
 }
 
 func productionImage(image string) bool {

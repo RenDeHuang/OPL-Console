@@ -6,9 +6,9 @@
   "publicUrl": "https://cloud.medopl.cn",
   "workspaceDomain": "workspace.medopl.cn",
   "namespace": "opl-cloud",
+  "fabricProvider": "tke",
   "secrets": {
     "DATABASE_URL": { "secretRef": "opl-console-database/DATABASE_URL" },
-    "OPL_CONSOLE_USERS_JSON": { "secretRef": "opl-console-auth/OPL_CONSOLE_USERS_JSON" },
-    "KUBECONFIG": { "secretRef": "opl-console-deploy-kubeconfig/kubeconfig" }
+    "OPL_CONSOLE_USERS_JSON": { "secretRef": "opl-console-auth/OPL_CONSOLE_USERS_JSON" }
   }
 }

@@ -23,10 +23,64 @@
         "OPL_CONSOLE_ADDR": "0.0.0.0:8787",
         "OPL_PUBLIC_URL": "https://cloud.medopl.cn",
         "OPL_WORKSPACE_DOMAIN": "workspace.medopl.cn",
+        "OPL_FABRIC_PROVIDER": "tke",
         "OPL_K8S_NAMESPACE": "opl-cloud",
         "OPL_INGRESS_CLASS": "qcloud",
         "OPL_WORKSPACE_IMAGE": "registry.example.com/opl/one-person-lab-app:2026-07-04",
         "OPL_WORKSPACE_STORAGE_CLASS": "cbs"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ServiceAccount",
+      "metadata": {
+        "name": "opl-console",
+        "namespace": "opl-cloud"
+      }
+    },
+    {
+      "apiVersion": "rbac.authorization.k8s.io/v1",
+      "kind": "Role",
+      "metadata": {
+        "name": "opl-console-runtime-manager",
+        "namespace": "opl-cloud"
+      },
+      "rules": [
+        {
+          "apiGroups": [""],
+          "resources": ["services", "persistentvolumeclaims", "secrets"],
+          "verbs": ["get", "list", "create", "update", "delete"]
+        },
+        {
+          "apiGroups": ["apps"],
+          "resources": ["deployments"],
+          "verbs": ["get", "list", "create", "update", "delete"]
+        },
+        {
+          "apiGroups": ["networking.k8s.io"],
+          "resources": ["ingresses"],
+          "verbs": ["get", "list", "create", "update", "delete"]
+        }
+      ]
+    },
+    {
+      "apiVersion": "rbac.authorization.k8s.io/v1",
+      "kind": "RoleBinding",
+      "metadata": {
+        "name": "opl-console-runtime-manager",
+        "namespace": "opl-cloud"
+      },
+      "subjects": [
+        {
+          "kind": "ServiceAccount",
+          "name": "opl-console",
+          "namespace": "opl-cloud"
+        }
+      ],
+      "roleRef": {
+        "apiGroup": "rbac.authorization.k8s.io",
+        "kind": "Role",
+        "name": "opl-console-runtime-manager"
       }
     },
     {
@@ -50,7 +104,8 @@
             }
           },
           "spec": {
-            "automountServiceAccountToken": false,
+            "serviceAccountName": "opl-console",
+            "automountServiceAccountToken": true,
             "containers": [
               {
                 "name": "console",
@@ -88,8 +143,8 @@
                     }
                   },
                   {
-                    "name": "KUBECONFIG",
-                    "value": "/var/run/opl-console/kubeconfig/kubeconfig"
+                    "name": "OPL_SESSION_COOKIE_NAME",
+                    "value": "opl_console_session"
                   }
                 ],
                 "readinessProbe": {
@@ -117,11 +172,6 @@
                 },
                 "volumeMounts": [
                   {
-                    "name": "deploy-kubeconfig",
-                    "mountPath": "/var/run/opl-console/kubeconfig",
-                    "readOnly": true
-                  },
-                  {
                     "name": "tmp",
                     "mountPath": "/tmp"
                   }
@@ -129,12 +179,6 @@
               }
             ],
             "volumes": [
-              {
-                "name": "deploy-kubeconfig",
-                "secret": {
-                  "secretName": "opl-console-deploy-kubeconfig"
-                }
-              },
               {
                 "name": "tmp",
                 "emptyDir": {}

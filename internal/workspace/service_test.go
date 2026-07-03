@@ -3,11 +3,13 @@ package workspace
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/RenDeHuang/opl-console/internal/fabric"
+	"github.com/RenDeHuang/opl-console/internal/ledger"
 )
 
 func TestCreateWorkspaceUsesFabricPort(t *testing.T) {
@@ -204,6 +206,99 @@ func TestCreateWorkspaceDoesNotDestroyRouteOnRouteErrorWithEmptyHandle(t *testin
 	}
 }
 
+func TestCreateWorkspaceCreatesApprovalWhenPolicyRequiresReview(t *testing.T) {
+	fabricPort := &recordingFabric{}
+	repository := &recordingWorkspaceRepository{
+		createContext: CreateContext{
+			ActorUserID:      "usr-owner",
+			OrganizationID:   "org-alpha",
+			HoldAmountFen:    100,
+			RequiresApproval: true,
+			Package:          fabric.PackagePlan{ID: "basic", CPU: 2, MemoryGB: 4, StorageGB: 10},
+		},
+	}
+	ledgerPort := &recordingLedger{}
+	service := NewService(fabricPort, WithRepository(repository), WithLedger(ledgerPort))
+
+	result, err := service.CreateWorkspace(context.Background(), CreateWorkspaceRequest{
+		WorkspaceID:      "ws-alpha",
+		Name:             "Alpha Lab",
+		BillingAccountID: "acct-owner",
+		PackageID:        "basic",
+		Token:            "share-token",
+		ActorUserID:      "usr-owner",
+	})
+	if err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	if result.State != "approval_required" || result.ApprovalID == "" {
+		t.Fatalf("result = %#v, want approval_required with approval id", result)
+	}
+	assertCalls(t, fabricPort.calls, []string{})
+	if len(ledgerPort.holds) != 0 {
+		t.Fatalf("holds = %#v, want no hold before approval", ledgerPort.holds)
+	}
+	if len(repository.approvals) != 1 || repository.approvals[0].Action != "workspace.create" {
+		t.Fatalf("approvals = %#v", repository.approvals)
+	}
+	if len(ledgerPort.auditEvents) != 1 || ledgerPort.auditEvents[0].Result != "approval_required" {
+		t.Fatalf("audit events = %#v", ledgerPort.auditEvents)
+	}
+}
+
+func TestCreateWorkspacePersistsFacadeStateAndLedgerEvidence(t *testing.T) {
+	fabricPort := &recordingFabric{
+		route: fabric.RuntimeHandle{ProviderResourceID: "route/ws-alpha", Status: "ready", URL: "https://workspace.example/ws-alpha"},
+	}
+	repository := &recordingWorkspaceRepository{
+		createContext: CreateContext{
+			ActorUserID:    "usr-owner",
+			OrganizationID: "org-alpha",
+			HoldAmountFen:  100,
+			Package:        fabric.PackagePlan{ID: "basic", CPU: 2, MemoryGB: 4, StorageGB: 10},
+		},
+	}
+	ledgerPort := &recordingLedger{}
+	service := NewService(fabricPort, WithRepository(repository), WithLedger(ledgerPort))
+
+	result, err := service.CreateWorkspace(context.Background(), CreateWorkspaceRequest{
+		WorkspaceID:      "ws-alpha",
+		Name:             "Alpha Lab",
+		BillingAccountID: "acct-owner",
+		PackageID:        "basic",
+		Token:            "share-token",
+		ActorUserID:      "usr-owner",
+	})
+	if err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	if result.State != "ready" || result.URL != "https://workspace.example/ws-alpha" {
+		t.Fatalf("result = %#v", result)
+	}
+	assertCalls(t, fabricPort.calls, []string{
+		"create_storage",
+		"create_compute",
+		"attach_storage",
+		"create_route",
+	})
+	if len(ledgerPort.holds) != 1 || ledgerPort.holds[0].ResourceID != "ws-alpha" {
+		t.Fatalf("holds = %#v", ledgerPort.holds)
+	}
+	if len(repository.created) != 1 {
+		t.Fatalf("created records = %#v", repository.created)
+	}
+	created := repository.created[0]
+	if created.WorkspaceID != "ws-alpha" || created.ComputeProviderID == "" || created.StorageProviderID == "" || created.RouteURL == "" {
+		t.Fatalf("created record = %#v", created)
+	}
+	if len(ledgerPort.receipts) != 1 || ledgerPort.receipts[0].ReceiptType != "workspace.governance.created" {
+		t.Fatalf("receipts = %#v", ledgerPort.receipts)
+	}
+	if len(ledgerPort.auditEvents) != 1 || ledgerPort.auditEvents[0].Result != "succeeded" {
+		t.Fatalf("audit events = %#v", ledgerPort.auditEvents)
+	}
+}
+
 type recordingFabric struct {
 	calls []string
 
@@ -221,6 +316,67 @@ type recordingFabric struct {
 	createComputeErr error
 	attachStorageErr error
 	createRouteErr   error
+}
+
+type recordingWorkspaceRepository struct {
+	createContext CreateContext
+	approvals     []ApprovalRequest
+	created       []CreatedWorkspace
+}
+
+func (r *recordingWorkspaceRepository) PrepareCreate(ctx context.Context, request CreateWorkspaceRequest) (CreateContext, error) {
+	return r.createContext, nil
+}
+
+func (r *recordingWorkspaceRepository) CreateApproval(ctx context.Context, request ApprovalRequest) (string, error) {
+	r.approvals = append(r.approvals, request)
+	return fmt.Sprintf("approval-%d", len(r.approvals)), nil
+}
+
+func (r *recordingWorkspaceRepository) SaveCreated(ctx context.Context, record CreatedWorkspace) error {
+	r.created = append(r.created, record)
+	return nil
+}
+
+func (r *recordingWorkspaceRepository) Handoff(ctx context.Context, request HandoffRequest) (HandoffResult, error) {
+	return HandoffResult{WorkspaceID: request.WorkspaceID, URL: "https://workspace.example/" + request.WorkspaceID, State: "running"}, nil
+}
+
+type recordingLedger struct {
+	holds       []ledger.HoldRequest
+	auditEvents []ledger.AuditEvent
+	receipts    []ledger.Receipt
+}
+
+func (r *recordingLedger) GetWallet(ctx context.Context, billingAccountID string) (ledger.Wallet, error) {
+	return ledger.Wallet{BillingAccountID: billingAccountID, BalanceFen: 1000, AvailableFen: 900}, nil
+}
+
+func (r *recordingLedger) FreezeHold(ctx context.Context, request ledger.HoldRequest) error {
+	r.holds = append(r.holds, request)
+	return nil
+}
+
+func (r *recordingLedger) ReleaseHold(ctx context.Context, holdID string, actorUserID string) error {
+	return nil
+}
+
+func (r *recordingLedger) DebitHold(ctx context.Context, holdID string, actorUserID string) error {
+	return nil
+}
+
+func (r *recordingLedger) RecordManualTopUp(ctx context.Context, request ledger.TopUpRequest) error {
+	return nil
+}
+
+func (r *recordingLedger) RecordAuditEvent(ctx context.Context, event ledger.AuditEvent) error {
+	r.auditEvents = append(r.auditEvents, event)
+	return nil
+}
+
+func (r *recordingLedger) RecordReceipt(ctx context.Context, receipt ledger.Receipt) error {
+	r.receipts = append(r.receipts, receipt)
+	return nil
 }
 
 func (f *recordingFabric) CreateCompute(ctx context.Context, request fabric.CreateComputeRequest) (fabric.RuntimeHandle, error) {
@@ -291,6 +447,9 @@ func assertPackage(t *testing.T, plan fabric.PackagePlan) {
 
 func assertCalls(t *testing.T, got, want []string) {
 	t.Helper()
+	if len(got) == 0 && len(want) == 0 {
+		return
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("calls = %v, want %v", got, want)
 	}

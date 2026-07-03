@@ -16,6 +16,7 @@ type Config struct {
 	IngressClass          string
 	WorkspaceImage        string
 	WorkspaceStorageClass string
+	FabricProvider        string
 	SessionCookieName     string
 	ConsoleUsersJSON      string
 }
@@ -31,6 +32,7 @@ func Load() (Config, error) {
 		IngressClass:          env("OPL_INGRESS_CLASS", "nginx"),
 		WorkspaceImage:        env("OPL_WORKSPACE_IMAGE", "ghcr.io/gaofeng21cn/one-person-lab-app:latest"),
 		WorkspaceStorageClass: env("OPL_WORKSPACE_STORAGE_CLASS", "cbs"),
+		FabricProvider:        env("OPL_FABRIC_PROVIDER", "local"),
 		SessionCookieName:     env("OPL_SESSION_COOKIE_NAME", "opl_console_session"),
 		ConsoleUsersJSON:      env("OPL_CONSOLE_USERS_JSON", ""),
 	}

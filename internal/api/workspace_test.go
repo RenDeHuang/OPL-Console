@@ -16,6 +16,7 @@ import (
 type fakeWorkspaceService struct {
 	request workspace.CreateWorkspaceRequest
 	result  workspace.CreateWorkspaceResult
+	handoff workspace.HandoffResult
 	err     error
 }
 
@@ -25,6 +26,10 @@ func (f *fakeWorkspaceService) CreateWorkspace(ctx context.Context, request work
 		return workspace.CreateWorkspaceResult{}, f.err
 	}
 	return f.result, nil
+}
+
+func (f *fakeWorkspaceService) Handoff(ctx context.Context, request workspace.HandoffRequest) (workspace.HandoffResult, error) {
+	return f.handoff, f.err
 }
 
 func TestCreateWorkspaceRouteRequiresOwnerAndCallsFacade(t *testing.T) {
@@ -78,5 +83,29 @@ func TestCreateWorkspaceRouteRejectsMissingSession(t *testing.T) {
 
 	if response.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+}
+
+func TestWorkspaceHandoffValidatesTokenWithoutSession(t *testing.T) {
+	workspaceService := &fakeWorkspaceService{handoff: workspace.HandoffResult{
+		WorkspaceID: "ws-alpha",
+		URL:         "https://workspace.example/ws-alpha",
+		State:       "running",
+	}}
+	handler := NewRouter(Dependencies{Workspace: workspaceService})
+	request := httptest.NewRequest(http.MethodGet, "/w/ws-alpha?token=share-token", nil)
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var payload workspace.HandoffResult
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.URL != "https://workspace.example/ws-alpha" {
+		t.Fatalf("payload = %#v", payload)
 	}
 }
