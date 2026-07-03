@@ -11,6 +11,7 @@ import (
 	"github.com/RenDeHuang/opl-console/internal/config"
 	"github.com/RenDeHuang/opl-console/internal/console"
 	"github.com/RenDeHuang/opl-console/internal/fabric/local"
+	"github.com/RenDeHuang/opl-console/internal/readiness"
 	"github.com/RenDeHuang/opl-console/internal/store"
 	"github.com/RenDeHuang/opl-console/internal/workspace"
 )
@@ -54,7 +55,8 @@ func main() {
 			return api.Readiness{Ready: ready, Checks: map[string]bool{"postgres": ready}}
 		},
 		ProductionReady: func() api.Readiness {
-			return api.Readiness{Ready: false, Checks: map[string]bool{"production_config": false}}
+			report := readiness.Production(cfg)
+			return api.Readiness{Ready: report.Ready, Checks: report.Checks}
 		},
 	})
 	server := http.Server{
