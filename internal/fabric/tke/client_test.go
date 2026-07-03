@@ -2,11 +2,17 @@ package tke
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/kubernetes/fake"
+	clientgotesting "k8s.io/client-go/testing"
 
 	"github.com/RenDeHuang/opl-console/internal/fabric"
 )
@@ -57,6 +63,34 @@ func TestCreateComputeCreatesDeploymentAndService(t *testing.T) {
 	}
 }
 
+func TestCreateComputeRollsBackDeploymentWhenServiceCreateFails(t *testing.T) {
+	clientset := fake.NewSimpleClientset()
+	clientset.PrependReactor("create", "services", func(action clientgotesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("service create failed")
+	})
+	client := New(testConfig(), clientset)
+
+	_, err := client.CreateCompute(context.Background(), fabric.CreateComputeRequest{
+		ComputeID:        "cmp-ws-alpha",
+		BillingAccountID: "acct-owner",
+		Package:          fabric.PackagePlan{ID: "basic", CPU: 2, MemoryGB: 4, StorageGB: 10},
+	})
+	if err == nil {
+		t.Fatal("create compute error = nil")
+	}
+	if !strings.Contains(err.Error(), "create service") {
+		t.Fatalf("error = %v, want wrapped service error", err)
+	}
+
+	deployments, err := client.client.AppsV1().Deployments("opl-cloud").List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deployments.Items) != 0 {
+		t.Fatalf("deployments = %d, want rollback delete", len(deployments.Items))
+	}
+}
+
 func TestCreateStorageCreatesPVC(t *testing.T) {
 	client := New(testConfig(), fake.NewSimpleClientset())
 
@@ -88,6 +122,28 @@ func TestCreateStorageCreatesPVC(t *testing.T) {
 	}
 	if got := pvc.Spec.Resources.Requests.Storage().String(); got != "10Gi" {
 		t.Fatalf("storage request = %q", got)
+	}
+}
+
+func TestCreateStorageOmitsStorageClassWhenConfigIsEmpty(t *testing.T) {
+	cfg := testConfig()
+	cfg.StorageClass = ""
+	client := New(cfg, fake.NewSimpleClientset())
+
+	if _, err := client.CreateStorage(context.Background(), fabric.CreateStorageRequest{
+		StorageID:        "stg-ws-alpha",
+		BillingAccountID: "acct-owner",
+		Package:          fabric.PackagePlan{ID: "basic", CPU: 2, MemoryGB: 4, StorageGB: 10},
+	}); err != nil {
+		t.Fatalf("create storage: %v", err)
+	}
+
+	pvc, err := client.client.CoreV1().PersistentVolumeClaims("opl-cloud").Get(context.Background(), "stg-ws-alpha", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pvc.Spec.StorageClassName != nil {
+		t.Fatalf("storage class = %q, want nil", *pvc.Spec.StorageClassName)
 	}
 }
 
@@ -133,6 +189,164 @@ func TestCreateWorkspaceRouteCreatesTokenSecretAndIngress(t *testing.T) {
 	}
 }
 
+func TestCreateMethodsUseDNS1123SafeResourceNamesAndAnnotateOriginalIDs(t *testing.T) {
+	client := New(testConfig(), fake.NewSimpleClientset())
+	ctx := context.Background()
+	unsafeLongID := "WS_ALPHA.with_UNSAFE_chars_" + strings.Repeat("LongSegment", 8)
+	computeID := "CMP_" + unsafeLongID
+	storageID := "STG_" + unsafeLongID
+
+	if _, err := client.CreateCompute(ctx, fabric.CreateComputeRequest{
+		ComputeID:        computeID,
+		BillingAccountID: "acct-owner",
+		Package:          fabric.PackagePlan{ID: "basic", CPU: 2, MemoryGB: 4, StorageGB: 10},
+	}); err != nil {
+		t.Fatalf("create compute: %v", err)
+	}
+	if _, err := client.CreateStorage(ctx, fabric.CreateStorageRequest{
+		StorageID:        storageID,
+		BillingAccountID: "acct-owner",
+		Package:          fabric.PackagePlan{ID: "basic", CPU: 2, MemoryGB: 4, StorageGB: 10},
+	}); err != nil {
+		t.Fatalf("create storage: %v", err)
+	}
+	if _, err := client.CreateWorkspaceRoute(ctx, fabric.CreateRouteRequest{
+		WorkspaceID:   unsafeLongID,
+		WorkspaceName: "Alpha",
+		ComputeID:     computeID,
+		Token:         "token-1",
+	}); err != nil {
+		t.Fatalf("create workspace route: %v", err)
+	}
+
+	deployments, err := client.client.AppsV1().Deployments("opl-cloud").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deployments.Items) != 1 {
+		t.Fatalf("deployments = %d", len(deployments.Items))
+	}
+	assertDNS1123Name(t, deployments.Items[0].Name)
+	if deployments.Items[0].Annotations["opl.one-person-lab/original-compute-id"] != computeID {
+		t.Fatalf("deployment original compute annotation = %q", deployments.Items[0].Annotations["opl.one-person-lab/original-compute-id"])
+	}
+
+	services, err := client.client.CoreV1().Services("opl-cloud").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(services.Items) != 1 {
+		t.Fatalf("services = %d", len(services.Items))
+	}
+	assertDNS1123Name(t, services.Items[0].Name)
+	if services.Items[0].Name != deployments.Items[0].Name {
+		t.Fatalf("service name = %q, deployment name = %q", services.Items[0].Name, deployments.Items[0].Name)
+	}
+
+	pvcs, err := client.client.CoreV1().PersistentVolumeClaims("opl-cloud").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pvcs.Items) != 1 {
+		t.Fatalf("pvcs = %d", len(pvcs.Items))
+	}
+	assertDNS1123Name(t, pvcs.Items[0].Name)
+	if pvcs.Items[0].Annotations["opl.one-person-lab/original-storage-id"] != storageID {
+		t.Fatalf("pvc original storage annotation = %q", pvcs.Items[0].Annotations["opl.one-person-lab/original-storage-id"])
+	}
+
+	ingresses, err := client.client.NetworkingV1().Ingresses("opl-cloud").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ingresses.Items) != 1 {
+		t.Fatalf("ingresses = %d", len(ingresses.Items))
+	}
+	assertDNS1123Name(t, ingresses.Items[0].Name)
+	if ingresses.Items[0].Annotations["opl.one-person-lab/original-workspace-id"] != unsafeLongID {
+		t.Fatalf("ingress original workspace annotation = %q", ingresses.Items[0].Annotations["opl.one-person-lab/original-workspace-id"])
+	}
+	if got := ingresses.Items[0].Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name; got != services.Items[0].Name {
+		t.Fatalf("backend service = %q, want %q", got, services.Items[0].Name)
+	}
+
+	secrets, err := client.client.CoreV1().Secrets("opl-cloud").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(secrets.Items) != 1 {
+		t.Fatalf("secrets = %d", len(secrets.Items))
+	}
+	assertDNS1123Name(t, secrets.Items[0].Name)
+	if secrets.Items[0].Annotations["opl.one-person-lab/original-workspace-id"] != unsafeLongID {
+		t.Fatalf("secret original workspace annotation = %q", secrets.Items[0].Annotations["opl.one-person-lab/original-workspace-id"])
+	}
+}
+
+func TestDestroyComputeDeletesExistingDeploymentAndService(t *testing.T) {
+	client := New(testConfig(), fake.NewSimpleClientset())
+	ctx := context.Background()
+	if _, err := client.CreateCompute(ctx, fabric.CreateComputeRequest{
+		ComputeID:        "cmp-ws-alpha",
+		BillingAccountID: "acct-owner",
+		Package:          fabric.PackagePlan{ID: "basic", CPU: 2, MemoryGB: 4, StorageGB: 10},
+	}); err != nil {
+		t.Fatalf("create compute: %v", err)
+	}
+
+	if err := client.DestroyCompute(ctx, fabric.DestroyComputeRequest{ComputeID: "cmp-ws-alpha"}); err != nil {
+		t.Fatalf("destroy compute: %v", err)
+	}
+	if _, err := client.client.AppsV1().Deployments("opl-cloud").Get(ctx, "cmp-ws-alpha", metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Fatalf("deployment get err = %v, want not found", err)
+	}
+	if _, err := client.client.CoreV1().Services("opl-cloud").Get(ctx, "cmp-ws-alpha", metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Fatalf("service get err = %v, want not found", err)
+	}
+}
+
+func TestDestroyStorageDeletesExistingPVC(t *testing.T) {
+	client := New(testConfig(), fake.NewSimpleClientset())
+	ctx := context.Background()
+	if _, err := client.CreateStorage(ctx, fabric.CreateStorageRequest{
+		StorageID:        "stg-ws-alpha",
+		BillingAccountID: "acct-owner",
+		Package:          fabric.PackagePlan{ID: "basic", CPU: 2, MemoryGB: 4, StorageGB: 10},
+	}); err != nil {
+		t.Fatalf("create storage: %v", err)
+	}
+
+	if err := client.DestroyStorage(ctx, fabric.DestroyStorageRequest{StorageID: "stg-ws-alpha"}); err != nil {
+		t.Fatalf("destroy storage: %v", err)
+	}
+	if _, err := client.client.CoreV1().PersistentVolumeClaims("opl-cloud").Get(ctx, "stg-ws-alpha", metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Fatalf("pvc get err = %v, want not found", err)
+	}
+}
+
+func TestDestroyWorkspaceRouteDeletesExistingIngressAndTokenSecret(t *testing.T) {
+	client := New(testConfig(), fake.NewSimpleClientset())
+	ctx := context.Background()
+	if _, err := client.CreateWorkspaceRoute(ctx, fabric.CreateRouteRequest{
+		WorkspaceID:   "ws-alpha",
+		WorkspaceName: "Alpha",
+		ComputeID:     "cmp-ws-alpha",
+		Token:         "token-1",
+	}); err != nil {
+		t.Fatalf("create workspace route: %v", err)
+	}
+
+	if err := client.DestroyWorkspaceRoute(ctx, fabric.DestroyWorkspaceRouteRequest{WorkspaceID: "ws-alpha"}); err != nil {
+		t.Fatalf("destroy workspace route: %v", err)
+	}
+	if _, err := client.client.NetworkingV1().Ingresses("opl-cloud").Get(ctx, "ws-alpha", metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Fatalf("ingress get err = %v, want not found", err)
+	}
+	if _, err := client.client.CoreV1().Secrets("opl-cloud").Get(ctx, "workspace-ws-alpha-token", metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Fatalf("secret get err = %v, want not found", err)
+	}
+}
+
 func TestDestroyMethodsTreatMissingResourcesAsSuccess(t *testing.T) {
 	client := New(testConfig(), fake.NewSimpleClientset())
 	ctx := context.Background()
@@ -146,6 +360,36 @@ func TestDestroyMethodsTreatMissingResourcesAsSuccess(t *testing.T) {
 	if err := client.DestroyWorkspaceRoute(ctx, fabric.DestroyWorkspaceRouteRequest{WorkspaceID: "missing-workspace"}); err != nil {
 		t.Fatalf("destroy missing route: %v", err)
 	}
+}
+
+func TestDestroyMethodsUseDNS1123SafeResourceNames(t *testing.T) {
+	client := New(testConfig(), fake.NewSimpleClientset())
+	ctx := context.Background()
+	unsafeLongID := "WS_ALPHA.with_UNSAFE_chars_" + strings.Repeat("LongSegment", 8)
+	computeID := "CMP_" + unsafeLongID
+	storageID := "STG_" + unsafeLongID
+
+	if _, err := client.CreateCompute(ctx, fabric.CreateComputeRequest{ComputeID: computeID, Package: fabric.PackagePlan{StorageGB: 10}}); err != nil {
+		t.Fatalf("create compute: %v", err)
+	}
+	if _, err := client.CreateStorage(ctx, fabric.CreateStorageRequest{StorageID: storageID, Package: fabric.PackagePlan{StorageGB: 10}}); err != nil {
+		t.Fatalf("create storage: %v", err)
+	}
+	if _, err := client.CreateWorkspaceRoute(ctx, fabric.CreateRouteRequest{WorkspaceID: unsafeLongID, ComputeID: computeID, Token: "token-1"}); err != nil {
+		t.Fatalf("create workspace route: %v", err)
+	}
+
+	if err := client.DestroyCompute(ctx, fabric.DestroyComputeRequest{ComputeID: computeID}); err != nil {
+		t.Fatalf("destroy compute: %v", err)
+	}
+	if err := client.DestroyStorage(ctx, fabric.DestroyStorageRequest{StorageID: storageID}); err != nil {
+		t.Fatalf("destroy storage: %v", err)
+	}
+	if err := client.DestroyWorkspaceRoute(ctx, fabric.DestroyWorkspaceRouteRequest{WorkspaceID: unsafeLongID}); err != nil {
+		t.Fatalf("destroy workspace route: %v", err)
+	}
+
+	assertNoRemainingResources(t, client)
 }
 
 func TestResetWorkspaceTokenCreatesUpdatesSecretAndReturnsURL(t *testing.T) {
@@ -204,5 +448,60 @@ func testConfig() Config {
 		Image:        "ghcr.io/gaofeng21cn/one-person-lab-app:latest",
 		StorageClass: "cbs",
 		IngressClass: "nginx",
+	}
+}
+
+func assertDNS1123Name(t *testing.T, name string) {
+	t.Helper()
+	if errs := validation.IsDNS1123Label(name); len(errs) != 0 {
+		t.Fatalf("name %q is not DNS-1123 safe: %v", name, errs)
+	}
+	if len(name) > 63 {
+		t.Fatalf("name length = %d, want <= 63", len(name))
+	}
+}
+
+func assertNoRemainingResources(t *testing.T, client *Client) {
+	t.Helper()
+	ctx := context.Background()
+
+	deployments, err := client.client.AppsV1().Deployments("opl-cloud").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deployments.Items) != 0 {
+		t.Fatalf("deployments = %d, want 0", len(deployments.Items))
+	}
+
+	services, err := client.client.CoreV1().Services("opl-cloud").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(services.Items) != 0 {
+		t.Fatalf("services = %d, want 0", len(services.Items))
+	}
+
+	pvcs, err := client.client.CoreV1().PersistentVolumeClaims("opl-cloud").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pvcs.Items) != 0 {
+		t.Fatalf("pvcs = %d, want 0", len(pvcs.Items))
+	}
+
+	ingresses, err := client.client.NetworkingV1().Ingresses("opl-cloud").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ingresses.Items) != 0 {
+		t.Fatalf("ingresses = %d, want 0", len(ingresses.Items))
+	}
+
+	secrets, err := client.client.CoreV1().Secrets("opl-cloud").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(secrets.Items) != 0 {
+		t.Fatalf("secrets = %d, want 0", len(secrets.Items))
 	}
 }
