@@ -20,11 +20,12 @@ import (
 )
 
 const (
-	workspaceContainerName = "workspace"
-	workspaceHTTPPort      = int32(3000)
-	maxDNS1123LabelLength  = 63
-	defaultConsoleService  = "opl-console"
-	defaultConsolePort     = int32(8787)
+	workspaceContainerName  = "workspace"
+	workspaceHTTPPort       = int32(3000)
+	defaultStorageMountPath = "/data"
+	maxDNS1123LabelLength   = 63
+	defaultConsoleService   = "opl-console"
+	defaultConsolePort      = int32(8787)
 
 	originalComputeIDAnnotation   = "opl.one-person-lab/original-compute-id"
 	originalStorageIDAnnotation   = "opl.one-person-lab/original-storage-id"
@@ -164,6 +165,66 @@ func (c *Client) CreateStorage(ctx context.Context, request fabric.CreateStorage
 }
 
 func (c *Client) AttachStorage(ctx context.Context, request fabric.AttachStorageRequest) (fabric.RuntimeHandle, error) {
+	deployments := c.client.AppsV1().Deployments(c.cfg.Namespace)
+	deploymentName := computeName(request.ComputeID)
+	deployment, err := deployments.Get(ctx, deploymentName, metav1.GetOptions{})
+	if err != nil {
+		return fabric.RuntimeHandle{}, fmt.Errorf("get deployment %q: %w", deploymentName, err)
+	}
+
+	workspaceIndex := -1
+	for i, container := range deployment.Spec.Template.Spec.Containers {
+		if container.Name == workspaceContainerName {
+			workspaceIndex = i
+			break
+		}
+	}
+	if workspaceIndex == -1 {
+		return fabric.RuntimeHandle{}, fmt.Errorf("workspace container %q not found in deployment %q", workspaceContainerName, deploymentName)
+	}
+
+	volumeName := storageName(request.StorageID)
+	volumeExists := false
+	for _, volume := range deployment.Spec.Template.Spec.Volumes {
+		if volume.Name == volumeName {
+			volumeExists = true
+			break
+		}
+	}
+	if !volumeExists {
+		deployment.Spec.Template.Spec.Volumes = append(deployment.Spec.Template.Spec.Volumes, corev1.Volume{
+			Name: volumeName,
+			VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: volumeName,
+				},
+			},
+		})
+	}
+
+	mountPath := request.MountPath
+	if mountPath == "" {
+		mountPath = defaultStorageMountPath
+	}
+	mounts := &deployment.Spec.Template.Spec.Containers[workspaceIndex].VolumeMounts
+	mountExists := false
+	for _, mount := range *mounts {
+		if mount.Name == volumeName {
+			mountExists = true
+			break
+		}
+	}
+	if !mountExists {
+		*mounts = append(*mounts, corev1.VolumeMount{
+			Name:      volumeName,
+			MountPath: mountPath,
+		})
+	}
+
+	if _, err := deployments.Update(ctx, deployment, metav1.UpdateOptions{}); err != nil {
+		return fabric.RuntimeHandle{}, fmt.Errorf("update deployment %q: %w", deploymentName, err)
+	}
+
 	return fabric.RuntimeHandle{
 		ProviderResourceID: request.AttachmentID,
 		Status:             "attached",

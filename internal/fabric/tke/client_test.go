@@ -147,6 +147,98 @@ func TestCreateStorageOmitsStorageClassWhenConfigIsEmpty(t *testing.T) {
 	}
 }
 
+func TestAttachStorageMountsPVCOnWorkspaceContainerDefaultPath(t *testing.T) {
+	client := New(testConfig(), fake.NewSimpleClientset())
+	ctx := context.Background()
+	createComputeAndStorage(t, client, "cmp-ws-alpha", "stg-ws-alpha")
+
+	handle, err := client.AttachStorage(ctx, fabric.AttachStorageRequest{
+		AttachmentID: "att-ws-alpha",
+		ComputeID:    "cmp-ws-alpha",
+		StorageID:    "stg-ws-alpha",
+	})
+	if err != nil {
+		t.Fatalf("attach storage: %v", err)
+	}
+	if handle.ProviderResourceID != "att-ws-alpha" {
+		t.Fatalf("provider resource id = %q", handle.ProviderResourceID)
+	}
+	if handle.Status != "attached" {
+		t.Fatalf("status = %q", handle.Status)
+	}
+
+	deployment, err := client.client.AppsV1().Deployments("opl-cloud").Get(ctx, "cmp-ws-alpha", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get deployment: %v", err)
+	}
+	assertAttachedStorage(t, deployment.Spec.Template.Spec.Volumes, deployment.Spec.Template.Spec.Containers, "stg-ws-alpha", "/data")
+}
+
+func TestAttachStorageIsIdempotent(t *testing.T) {
+	client := New(testConfig(), fake.NewSimpleClientset())
+	ctx := context.Background()
+	createComputeAndStorage(t, client, "cmp-ws-alpha", "stg-ws-alpha")
+
+	request := fabric.AttachStorageRequest{
+		AttachmentID: "att-ws-alpha",
+		ComputeID:    "cmp-ws-alpha",
+		StorageID:    "stg-ws-alpha",
+	}
+	if _, err := client.AttachStorage(ctx, request); err != nil {
+		t.Fatalf("attach storage: %v", err)
+	}
+	if _, err := client.AttachStorage(ctx, request); err != nil {
+		t.Fatalf("attach storage again: %v", err)
+	}
+
+	deployment, err := client.client.AppsV1().Deployments("opl-cloud").Get(ctx, "cmp-ws-alpha", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get deployment: %v", err)
+	}
+
+	volumeCount := 0
+	for _, volume := range deployment.Spec.Template.Spec.Volumes {
+		if volume.Name == "stg-ws-alpha" {
+			volumeCount++
+		}
+	}
+	if volumeCount != 1 {
+		t.Fatalf("volume count = %d, want 1", volumeCount)
+	}
+
+	workspace := workspaceContainer(t, deployment.Spec.Template.Spec.Containers)
+	mountCount := 0
+	for _, mount := range workspace.VolumeMounts {
+		if mount.Name == "stg-ws-alpha" {
+			mountCount++
+		}
+	}
+	if mountCount != 1 {
+		t.Fatalf("mount count = %d, want 1", mountCount)
+	}
+}
+
+func TestAttachStorageUsesCustomMountPath(t *testing.T) {
+	client := New(testConfig(), fake.NewSimpleClientset())
+	ctx := context.Background()
+	createComputeAndStorage(t, client, "cmp-ws-alpha", "stg-ws-alpha")
+
+	if _, err := client.AttachStorage(ctx, fabric.AttachStorageRequest{
+		AttachmentID: "att-ws-alpha",
+		ComputeID:    "cmp-ws-alpha",
+		StorageID:    "stg-ws-alpha",
+		MountPath:    "/workspace-data",
+	}); err != nil {
+		t.Fatalf("attach storage: %v", err)
+	}
+
+	deployment, err := client.client.AppsV1().Deployments("opl-cloud").Get(ctx, "cmp-ws-alpha", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get deployment: %v", err)
+	}
+	assertAttachedStorage(t, deployment.Spec.Template.Spec.Volumes, deployment.Spec.Template.Spec.Containers, "stg-ws-alpha", "/workspace-data")
+}
+
 func TestCreateWorkspaceRouteCreatesTokenSecretAndIngress(t *testing.T) {
 	client := New(testConfig(), fake.NewSimpleClientset())
 
@@ -704,6 +796,64 @@ func assertDNS1123Name(t *testing.T, name string) {
 	if len(name) > 63 {
 		t.Fatalf("name length = %d, want <= 63", len(name))
 	}
+}
+
+func createComputeAndStorage(t *testing.T, client *Client, computeID, storageID string) {
+	t.Helper()
+	ctx := context.Background()
+	if _, err := client.CreateCompute(ctx, fabric.CreateComputeRequest{
+		ComputeID:        computeID,
+		BillingAccountID: "acct-owner",
+		Package:          fabric.PackagePlan{ID: "basic", CPU: 2, MemoryGB: 4, StorageGB: 10},
+	}); err != nil {
+		t.Fatalf("create compute: %v", err)
+	}
+	if _, err := client.CreateStorage(ctx, fabric.CreateStorageRequest{
+		StorageID:        storageID,
+		BillingAccountID: "acct-owner",
+		Package:          fabric.PackagePlan{ID: "basic", CPU: 2, MemoryGB: 4, StorageGB: 10},
+	}); err != nil {
+		t.Fatalf("create storage: %v", err)
+	}
+}
+
+func assertAttachedStorage(t *testing.T, volumes []corev1.Volume, containers []corev1.Container, storageName, mountPath string) {
+	t.Helper()
+
+	for _, volume := range volumes {
+		if volume.Name != storageName {
+			continue
+		}
+		if volume.PersistentVolumeClaim == nil {
+			t.Fatalf("volume %q pvc source = nil", storageName)
+		}
+		if volume.PersistentVolumeClaim.ClaimName != storageName {
+			t.Fatalf("volume claim name = %q", volume.PersistentVolumeClaim.ClaimName)
+		}
+
+		workspace := workspaceContainer(t, containers)
+		for _, mount := range workspace.VolumeMounts {
+			if mount.Name == storageName {
+				if mount.MountPath != mountPath {
+					t.Fatalf("mount path = %q, want %q", mount.MountPath, mountPath)
+				}
+				return
+			}
+		}
+		t.Fatalf("workspace volume mount %q not found", storageName)
+	}
+	t.Fatalf("pvc volume %q not found", storageName)
+}
+
+func workspaceContainer(t *testing.T, containers []corev1.Container) corev1.Container {
+	t.Helper()
+	for _, container := range containers {
+		if container.Name == workspaceContainerName {
+			return container
+		}
+	}
+	t.Fatalf("workspace container not found")
+	return corev1.Container{}
 }
 
 func assertNoRemainingResources(t *testing.T, client *Client) {
