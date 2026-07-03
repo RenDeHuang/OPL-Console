@@ -10,7 +10,9 @@ import (
 	"github.com/RenDeHuang/opl-console/internal/auth"
 	"github.com/RenDeHuang/opl-console/internal/config"
 	"github.com/RenDeHuang/opl-console/internal/console"
+	"github.com/RenDeHuang/opl-console/internal/fabric/local"
 	"github.com/RenDeHuang/opl-console/internal/store"
+	"github.com/RenDeHuang/opl-console/internal/workspace"
 )
 
 func main() {
@@ -36,10 +38,12 @@ func main() {
 		Sessions: authStore,
 	})
 	governanceService := console.NewService(store.NewGovernanceStore(pool))
+	workspaceService := workspace.NewService(local.New())
 
 	router := api.NewRouter(api.Dependencies{
 		Auth:              authService,
 		Governance:        governanceService,
+		Workspace:         workspaceService,
 		SessionCookieName: cfg.SessionCookieName,
 		RuntimeReady: func() api.Readiness {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
