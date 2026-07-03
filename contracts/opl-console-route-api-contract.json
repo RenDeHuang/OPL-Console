@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "owner": "OPL Console",
+  "purpose": "Current public, owner, admin, and workspace routes owned by the OPL Console repository.",
+  "lifecycle": "current",
+  "routes": {
+    "public": [
+      "GET /api/healthz",
+      "GET /api/runtime/readiness",
+      "GET /api/production/readiness",
+      "POST /api/auth/login",
+      "POST /api/auth/logout",
+      "GET /api/auth/session"
+    ],
+    "owner": [
+      "GET /api/me",
+      "GET /api/packages",
+      "GET /api/workspaces",
+      "POST /api/workspaces",
+      "GET /api/workspaces/{id}",
+      "POST /api/workspaces/{id}/stop",
+      "POST /api/workspaces/{id}/restart",
+      "POST /api/workspaces/{id}/destroy-compute",
+      "POST /api/workspaces/{id}/destroy-storage",
+      "POST /api/workspaces/{id}/tokens/reset",
+      "POST /api/workspaces/{id}/tokens/delete",
+      "GET /api/billing/wallet",
+      "GET /api/billing/ledger",
+      "GET /api/support/tickets",
+      "POST /api/support/tickets"
+    ],
+    "admin": [
+      "GET /api/admin/users",
+      "GET /api/admin/workspaces",
+      "GET /api/admin/runtime",
+      "GET /api/admin/fabric/catalog",
+      "GET /api/admin/ledger",
+      "GET /api/admin/audit",
+      "POST /api/admin/users/{id}/topups",
+      "GET /api/admin/support/tickets"
+    ],
+    "workspace": [
+      "GET /w/{workspaceId}?token=..."
+    ]
+  }
+}

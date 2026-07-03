@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "owner": "OPL Console",
+  "purpose": "Business objects persisted and presented by OPL Console.",
+  "lifecycle": "current",
+  "objects": [
+    "User",
+    "Organization",
+    "Membership",
+    "BillingAccount",
+    "WalletHold",
+    "BillingLedgerEntry",
+    "ComputeResource",
+    "StorageVolume",
+    "StorageAttachment",
+    "Workspace",
+    "WorkspaceToken",
+    "RuntimeOperation",
+    "SupportTicket",
+    "AuditEvent",
+    "Receipt"
+  ]
+}

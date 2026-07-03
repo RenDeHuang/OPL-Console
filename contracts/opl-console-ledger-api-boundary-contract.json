@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "owner": "OPL Ledger boundary inside OPL Console",
+  "purpose": "Stable internal API shape for the v1 in-process Ledger module and future standalone OPL Ledger service.",
+  "lifecycle": "current",
+  "operations": [
+    "GetWallet",
+    "FreezeHold",
+    "ReleaseHold",
+    "DebitHold",
+    "RecordWalletTransaction",
+    "RecordManualTopUp",
+    "RecordBillingLedgerEntry",
+    "RecordAuditEvent",
+    "RecordReceipt",
+    "ListAccountLedger",
+    "ListAdminLedger"
+  ]
+}

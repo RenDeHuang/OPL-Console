@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "owner": "OPL Fabric boundary inside OPL Console",
+  "purpose": "Stable internal API shape for the v1 in-process Fabric module and future standalone OPL Fabric service.",
+  "lifecycle": "current",
+  "operations": [
+    "ListCatalog",
+    "RuntimeReadiness",
+    "CreateCompute",
+    "StopCompute",
+    "RestartCompute",
+    "DestroyCompute",
+    "CreateStorage",
+    "AttachStorage",
+    "DetachStorage",
+    "DestroyStorage",
+    "CreateWorkspaceRoute",
+    "ResetWorkspaceToken",
+    "DeleteWorkspaceToken",
+    "InspectRuntime"
+  ]
+}
