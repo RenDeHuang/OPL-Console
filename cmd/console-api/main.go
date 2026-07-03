@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/RenDeHuang/opl-console/internal/api"
 	"github.com/RenDeHuang/opl-console/internal/config"
@@ -23,12 +24,23 @@ func main() {
 
 	router := api.NewRouter(api.Dependencies{
 		RuntimeReady: func() api.Readiness {
-			return api.Readiness{Ready: true, Checks: map[string]bool{"postgres": true}}
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+
+			err := pool.Ping(ctx)
+			ready := err == nil
+			return api.Readiness{Ready: ready, Checks: map[string]bool{"postgres": ready}}
 		},
 		ProductionReady: func() api.Readiness {
 			return api.Readiness{Ready: false, Checks: map[string]bool{"production_config": false}}
 		},
 	})
+	server := http.Server{
+		Addr:              cfg.Addr,
+		Handler:           router,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+
 	log.Printf("OPL Console API listening on %s", cfg.Addr)
-	log.Fatal(http.ListenAndServe(cfg.Addr, router))
+	log.Fatal(server.ListenAndServe())
 }
