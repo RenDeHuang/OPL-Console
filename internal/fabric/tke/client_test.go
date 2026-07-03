@@ -184,8 +184,42 @@ func TestCreateWorkspaceRouteCreatesTokenSecretAndIngress(t *testing.T) {
 	if got := ingress.Spec.Rules[0].HTTP.Paths[0].Path; got != "/w/ws-alpha" {
 		t.Fatalf("ingress path = %q", got)
 	}
-	if got := ingress.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name; got != "cmp-ws-alpha" {
-		t.Fatalf("backend service = %q", got)
+	if got := ingress.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name; got != "opl-console" {
+		t.Fatalf("backend service = %q, want console service", got)
+	}
+	if got := ingress.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Port.Number; got != 8787 {
+		t.Fatalf("backend service port = %d", got)
+	}
+	if got := ingress.Annotations["opl.one-person-lab/original-compute-id"]; got != "cmp-ws-alpha" {
+		t.Fatalf("ingress original compute annotation = %q", got)
+	}
+}
+
+func TestCreateWorkspaceRouteUsesConfiguredConsoleBackend(t *testing.T) {
+	cfg := testConfig()
+	cfg.ConsoleServiceName = "console-validator"
+	cfg.ConsoleServicePort = 8080
+	client := New(cfg, fake.NewSimpleClientset())
+
+	if _, err := client.CreateWorkspaceRoute(context.Background(), fabric.CreateRouteRequest{
+		WorkspaceID:   "ws-alpha",
+		WorkspaceName: "Alpha",
+		ComputeID:     "cmp-ws-alpha",
+		Token:         "token-1",
+	}); err != nil {
+		t.Fatalf("create workspace route: %v", err)
+	}
+
+	ingress, err := client.client.NetworkingV1().Ingresses("opl-cloud").Get(context.Background(), "ws-alpha", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get ingress: %v", err)
+	}
+	backend := ingress.Spec.Rules[0].HTTP.Paths[0].Backend.Service
+	if backend.Name != "console-validator" {
+		t.Fatalf("backend service = %q", backend.Name)
+	}
+	if backend.Port.Number != 8080 {
+		t.Fatalf("backend service port = %d", backend.Port.Number)
 	}
 }
 
@@ -211,6 +245,53 @@ func TestCreateWorkspaceRouteRollsBackTokenSecretWhenIngressCreateFails(t *testi
 
 	if _, err := client.client.CoreV1().Secrets("opl-cloud").Get(context.Background(), "workspace-ws-alpha-token", metav1.GetOptions{}); !apierrors.IsNotFound(err) {
 		t.Fatalf("secret get err = %v, want not found after rollback", err)
+	}
+}
+
+func TestCreateWorkspaceRouteRestoresExistingTokenSecretWhenIngressCreateFails(t *testing.T) {
+	clientset := fake.NewSimpleClientset(&corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "workspace-ws-alpha-token",
+			Namespace: "opl-cloud",
+			Labels: map[string]string{
+				"existing-label": "keep",
+			},
+			Annotations: map[string]string{
+				"existing-annotation": "keep",
+			},
+		},
+		Data: map[string][]byte{"token": []byte("old-token")},
+	})
+	clientset.PrependReactor("create", "ingresses", func(action clientgotesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("ingress create failed")
+	})
+	client := New(testConfig(), clientset)
+
+	_, err := client.CreateWorkspaceRoute(context.Background(), fabric.CreateRouteRequest{
+		WorkspaceID:   "ws-alpha",
+		WorkspaceName: "Alpha",
+		ComputeID:     "cmp-ws-alpha",
+		Token:         "new-token",
+	})
+	if err == nil {
+		t.Fatal("create workspace route error = nil")
+	}
+	if !strings.Contains(err.Error(), "create ingress") {
+		t.Fatalf("error = %v, want wrapped ingress error", err)
+	}
+
+	secret, err := client.client.CoreV1().Secrets("opl-cloud").Get(context.Background(), "workspace-ws-alpha-token", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get restored token secret: %v", err)
+	}
+	if got := string(secret.Data["token"]); got != "old-token" {
+		t.Fatalf("secret token = %q", got)
+	}
+	if got := secret.Labels["existing-label"]; got != "keep" {
+		t.Fatalf("existing label = %q", got)
+	}
+	if got := secret.Annotations["existing-annotation"]; got != "keep" {
+		t.Fatalf("existing annotation = %q", got)
 	}
 }
 
@@ -305,8 +386,11 @@ func TestCreateMethodsUseDNS1123SafeResourceNamesAndAnnotateOriginalIDs(t *testi
 	if ingresses.Items[0].Annotations["opl.one-person-lab/original-workspace-id"] != unsafeLongID {
 		t.Fatalf("ingress original workspace annotation = %q", ingresses.Items[0].Annotations["opl.one-person-lab/original-workspace-id"])
 	}
-	if got := ingresses.Items[0].Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name; got != services.Items[0].Name {
-		t.Fatalf("backend service = %q, want %q", got, services.Items[0].Name)
+	if got := ingresses.Items[0].Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name; got != "opl-console" {
+		t.Fatalf("backend service = %q, want console service", got)
+	}
+	if got := ingresses.Items[0].Annotations["opl.one-person-lab/original-compute-id"]; got != computeID {
+		t.Fatalf("ingress original compute annotation = %q", got)
 	}
 
 	secrets, err := client.client.CoreV1().Secrets("opl-cloud").List(ctx, metav1.ListOptions{})
@@ -319,6 +403,9 @@ func TestCreateMethodsUseDNS1123SafeResourceNamesAndAnnotateOriginalIDs(t *testi
 	assertDNS1123Name(t, secrets.Items[0].Name)
 	if secrets.Items[0].Annotations["opl.one-person-lab/original-workspace-id"] != unsafeLongID {
 		t.Fatalf("secret original workspace annotation = %q", secrets.Items[0].Annotations["opl.one-person-lab/original-workspace-id"])
+	}
+	if secrets.Items[0].Annotations["opl.one-person-lab/original-compute-id"] != computeID {
+		t.Fatalf("secret original compute annotation = %q", secrets.Items[0].Annotations["opl.one-person-lab/original-compute-id"])
 	}
 }
 

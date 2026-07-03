@@ -23,6 +23,8 @@ const (
 	workspaceContainerName = "workspace"
 	workspaceHTTPPort      = int32(3000)
 	maxDNS1123LabelLength  = 63
+	defaultConsoleService  = "opl-console"
+	defaultConsolePort     = int32(8787)
 
 	originalComputeIDAnnotation   = "opl.one-person-lab/original-compute-id"
 	originalStorageIDAnnotation   = "opl.one-person-lab/original-storage-id"
@@ -34,6 +36,9 @@ type Config struct {
 	Image        string
 	StorageClass string
 	IngressClass string
+
+	ConsoleServiceName string
+	ConsoleServicePort int32
 }
 
 type Client struct {
@@ -45,6 +50,20 @@ var _ fabric.Port = (*Client)(nil)
 
 func New(cfg Config, client kubernetes.Interface) *Client {
 	return &Client{cfg: cfg, client: client}
+}
+
+func (c *Client) consoleServiceName() string {
+	if c.cfg.ConsoleServiceName != "" {
+		return c.cfg.ConsoleServiceName
+	}
+	return defaultConsoleService
+}
+
+func (c *Client) consoleServicePort() int32 {
+	if c.cfg.ConsoleServicePort != 0 {
+		return c.cfg.ConsoleServicePort
+	}
+	return defaultConsolePort
 }
 
 func (c *Client) CreateCompute(ctx context.Context, request fabric.CreateComputeRequest) (fabric.RuntimeHandle, error) {
@@ -152,9 +171,10 @@ func (c *Client) AttachStorage(ctx context.Context, request fabric.AttachStorage
 }
 
 func (c *Client) CreateWorkspaceRoute(ctx context.Context, request fabric.CreateRouteRequest) (fabric.RuntimeHandle, error) {
-	// v1 keeps the URL token query because Console validates it at the /w route boundary.
+	// v1 deliberately routes /w traffic to the Console validator before workspace handoff.
 	// The Kubernetes Secret is runtime handoff state, not ingress auth enforcement.
-	if _, err := c.upsertTokenSecret(ctx, request.WorkspaceID, request.Token); err != nil {
+	tokenUpsert, err := c.upsertTokenSecret(ctx, request.WorkspaceID, request.ComputeID, request.Token)
+	if err != nil {
 		return fabric.RuntimeHandle{}, fmt.Errorf("upsert token secret: %w", err)
 	}
 
@@ -164,7 +184,7 @@ func (c *Client) CreateWorkspaceRoute(ctx context.Context, request fabric.Create
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
 			Labels:      routeLabels(request.WorkspaceID),
-			Annotations: originalWorkspaceAnnotations(request.WorkspaceID),
+			Annotations: routeAnnotations(request.WorkspaceID, request.ComputeID),
 		},
 		Spec: networkingv1.IngressSpec{
 			Rules: []networkingv1.IngressRule{{
@@ -175,8 +195,8 @@ func (c *Client) CreateWorkspaceRoute(ctx context.Context, request fabric.Create
 							PathType: &pathType,
 							Backend: networkingv1.IngressBackend{
 								Service: &networkingv1.IngressServiceBackend{
-									Name: computeName(request.ComputeID),
-									Port: networkingv1.ServiceBackendPort{Number: workspaceHTTPPort},
+									Name: c.consoleServiceName(),
+									Port: networkingv1.ServiceBackendPort{Number: c.consoleServicePort()},
 								},
 							},
 						}},
@@ -190,7 +210,7 @@ func (c *Client) CreateWorkspaceRoute(ctx context.Context, request fabric.Create
 	}
 
 	if _, err := c.client.NetworkingV1().Ingresses(c.cfg.Namespace).Create(ctx, ingress, metav1.CreateOptions{}); err != nil {
-		_ = c.DeleteWorkspaceToken(ctx, fabric.DeleteWorkspaceTokenRequest{WorkspaceID: request.WorkspaceID})
+		_ = c.rollbackTokenSecret(ctx, tokenUpsert)
 		return fabric.RuntimeHandle{}, fmt.Errorf("create ingress: %w", err)
 	}
 
@@ -220,7 +240,7 @@ func (c *Client) DestroyWorkspaceRoute(ctx context.Context, request fabric.Destr
 }
 
 func (c *Client) ResetWorkspaceToken(ctx context.Context, request fabric.ResetWorkspaceTokenRequest) (fabric.RuntimeHandle, error) {
-	if _, err := c.upsertTokenSecret(ctx, request.WorkspaceID, request.Token); err != nil {
+	if _, err := c.upsertTokenSecret(ctx, request.WorkspaceID, "", request.Token); err != nil {
 		return fabric.RuntimeHandle{}, fmt.Errorf("upsert token secret: %w", err)
 	}
 	return routeHandle(request.WorkspaceID, request.Token), nil
@@ -230,30 +250,67 @@ func (c *Client) DeleteWorkspaceToken(ctx context.Context, request fabric.Delete
 	return ignoreNotFound(c.client.CoreV1().Secrets(c.cfg.Namespace).Delete(ctx, tokenSecretName(request.WorkspaceID), metav1.DeleteOptions{}))
 }
 
-func (c *Client) upsertTokenSecret(ctx context.Context, workspaceID, token string) (*corev1.Secret, error) {
+type tokenSecretUpsert struct {
+	name     string
+	created  bool
+	previous *corev1.Secret
+}
+
+func (c *Client) upsertTokenSecret(ctx context.Context, workspaceID, computeID, token string) (tokenSecretUpsert, error) {
 	secrets := c.client.CoreV1().Secrets(c.cfg.Namespace)
 	name := tokenSecretName(workspaceID)
 
 	secret, err := secrets.Get(ctx, name, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
-		return secrets.Create(ctx, tokenSecret(workspaceID, token), metav1.CreateOptions{})
+		if _, err := secrets.Create(ctx, tokenSecret(workspaceID, computeID, token), metav1.CreateOptions{}); err != nil {
+			return tokenSecretUpsert{}, err
+		}
+		return tokenSecretUpsert{name: name, created: true}, nil
 	}
 	if err != nil {
-		return nil, err
+		return tokenSecretUpsert{}, err
 	}
 
+	previous := secret.DeepCopy()
 	secret.Data = map[string][]byte{"token": []byte(token)}
 	secret.Labels = mergeStringMap(secret.Labels, routeLabels(workspaceID))
-	secret.Annotations = mergeStringMap(secret.Annotations, originalWorkspaceAnnotations(workspaceID))
-	return secrets.Update(ctx, secret, metav1.UpdateOptions{})
+	secret.Annotations = mergeStringMap(secret.Annotations, routeAnnotations(workspaceID, computeID))
+	if _, err := secrets.Update(ctx, secret, metav1.UpdateOptions{}); err != nil {
+		return tokenSecretUpsert{}, err
+	}
+	return tokenSecretUpsert{name: name, previous: previous}, nil
 }
 
-func tokenSecret(workspaceID, token string) *corev1.Secret {
+func (c *Client) rollbackTokenSecret(ctx context.Context, upsert tokenSecretUpsert) error {
+	secrets := c.client.CoreV1().Secrets(c.cfg.Namespace)
+	if upsert.created {
+		return ignoreNotFound(secrets.Delete(ctx, upsert.name, metav1.DeleteOptions{}))
+	}
+	if upsert.previous == nil {
+		return nil
+	}
+	current, err := secrets.Get(ctx, upsert.name, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		restored := upsert.previous.DeepCopy()
+		restored.ResourceVersion = ""
+		_, err = secrets.Create(ctx, restored, metav1.CreateOptions{})
+		return err
+	}
+	if err != nil {
+		return err
+	}
+	restored := upsert.previous.DeepCopy()
+	restored.ResourceVersion = current.ResourceVersion
+	_, err = secrets.Update(ctx, restored, metav1.UpdateOptions{})
+	return err
+}
+
+func tokenSecret(workspaceID, computeID, token string) *corev1.Secret {
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        tokenSecretName(workspaceID),
 			Labels:      routeLabels(workspaceID),
-			Annotations: originalWorkspaceAnnotations(workspaceID),
+			Annotations: routeAnnotations(workspaceID, computeID),
 		},
 		Type: corev1.SecretTypeOpaque,
 		Data: map[string][]byte{"token": []byte(token)},
@@ -309,6 +366,14 @@ func originalStorageAnnotations(storageID string) map[string]string {
 
 func originalWorkspaceAnnotations(workspaceID string) map[string]string {
 	return map[string]string{originalWorkspaceIDAnnotation: workspaceID}
+}
+
+func routeAnnotations(workspaceID, computeID string) map[string]string {
+	annotations := originalWorkspaceAnnotations(workspaceID)
+	if computeID != "" {
+		annotations[originalComputeIDAnnotation] = computeID
+	}
+	return annotations
 }
 
 func computeName(computeID string) string {
