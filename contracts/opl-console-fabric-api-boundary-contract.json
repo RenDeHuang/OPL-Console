@@ -1,8 +1,25 @@
 {
   "schemaVersion": 1,
-  "owner": "OPL Fabric boundary inside OPL Console",
-  "purpose": "Stable internal API shape for the v1 in-process Fabric module and future standalone OPL Fabric service.",
+  "owner": "OPL Fabric boundary consumed by OPL Console",
+  "purpose": "Stable API shape for Console governance calls into the v1 in-process Fabric adapter and future standalone OPL Fabric service.",
   "lifecycle": "current",
+  "boundary": {
+    "consoleUsesFor": [
+      "Managed compute policy and lifecycle",
+      "Managed storage policy and lifecycle",
+      "Managed attachment lifecycle",
+      "Managed workspace route handoff",
+      "Managed connector and environment approval status",
+      "Runtime readiness for governed resources"
+    ],
+    "consoleDoesNotOwn": [
+      "Fabric platform catalog truth",
+      "Connect implementation",
+      "Environment execution engine",
+      "Gateway/App/Workspace adapters outside managed policy",
+      "User-provided SSH, HPC, local, or unmanaged resources"
+    ]
+  },
   "operations": [
     "ListCatalog",
     "RuntimeReadiness",

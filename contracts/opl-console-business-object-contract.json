@@ -1,12 +1,49 @@
 {
   "schemaVersion": 1,
   "owner": "OPL Console",
-  "purpose": "Business objects persisted and presented by OPL Console.",
+  "purpose": "Governance objects persisted and presented by OPL Console for OPL Cloud-hosted or organization-managed resources.",
   "lifecycle": "current",
+  "boundary": {
+    "owns": [
+      "Organization",
+      "Team",
+      "User",
+      "Membership",
+      "Role",
+      "Policy",
+      "Approval",
+      "ManagedResourceView",
+      "SupportTicket"
+    ],
+    "facades": [
+      "BillingAccount",
+      "WalletHold",
+      "BillingLedgerEntry",
+      "ComputeResource",
+      "StorageVolume",
+      "StorageAttachment",
+      "Workspace",
+      "WorkspaceToken",
+      "RuntimeOperation",
+      "AuditEvent",
+      "Receipt"
+    ],
+    "doesNotOwn": [
+      "Workspace runtime",
+      "Gateway usage generation",
+      "Fabric resource execution",
+      "Ledger evidence platform",
+      "MAS or domain quality judgment"
+    ]
+  },
   "objects": [
     "User",
     "Organization",
+    "Team",
     "Membership",
+    "Role",
+    "Policy",
+    "Approval",
     "BillingAccount",
     "WalletHold",
     "BillingLedgerEntry",

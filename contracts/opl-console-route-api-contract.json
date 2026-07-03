@@ -1,8 +1,12 @@
 {
   "schemaVersion": 1,
   "owner": "OPL Console",
-  "purpose": "Current public, owner, admin, and workspace routes owned by the OPL Console repository.",
+  "purpose": "Current public, owner, admin, and managed-workspace routes exposed by the OPL Console governance surface.",
   "lifecycle": "current",
+  "boundary": {
+    "routeOwnership": "Console owns the governance API surface, not the underlying Workspace, Fabric, Ledger, Gateway, or usage-generation product domains.",
+    "activationRule": "Routes apply to OPL Cloud-hosted or organization-managed resources. Unmanaged App, Workspace, Fabric, Ledger, MAS, SSH, HPC, or local flows do not enter Console by default."
+  },
   "routes": {
     "public": [
       "GET /api/healthz",

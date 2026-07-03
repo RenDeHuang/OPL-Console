@@ -1,8 +1,24 @@
 {
   "schemaVersion": 1,
-  "owner": "OPL Ledger boundary inside OPL Console",
-  "purpose": "Stable internal API shape for the v1 in-process Ledger module and future standalone OPL Ledger service.",
+  "owner": "OPL Ledger boundary consumed by OPL Console",
+  "purpose": "Stable API shape for Console governance calls into the v1 in-process Ledger adapter and future standalone OPL Ledger service.",
   "lifecycle": "current",
+  "boundary": {
+    "consoleUsesFor": [
+      "Governance receipts",
+      "Audit events",
+      "Managed billing evidence",
+      "Receipt retention policy",
+      "Ledger views for OPL Cloud-hosted or organization-managed resources"
+    ],
+    "consoleDoesNotOwn": [
+      "Ledger platform truth",
+      "Workspace task evidence generation",
+      "App provenance generation",
+      "MAS evidence or domain judgment",
+      "Unmanaged local, SSH, HPC, or connector receipts"
+    ]
+  },
   "operations": [
     "GetWallet",
     "FreezeHold",
