@@ -2,7 +2,11 @@ export function LoginPage() {
   return (
     <main className="shell narrow">
       <h1>OPL Console</h1>
-      <form className="panel">
+      <form
+        className="panel"
+        method="post"
+        onSubmit={(event) => event.preventDefault()}
+      >
         <label>
           Email
           <input type="email" name="email" autoComplete="email" />

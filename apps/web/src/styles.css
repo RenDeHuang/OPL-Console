@@ -37,6 +37,11 @@ button {
   text-decoration: none;
 }
 
+.topbar a.active {
+  color: #1769aa;
+  font-weight: 600;
+}
+
 .shell {
   max-width: 1120px;
   margin: 0 auto;

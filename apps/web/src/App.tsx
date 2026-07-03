@@ -1,4 +1,4 @@
-import { BrowserRouter, Link, Route, Routes } from "react-router";
+import { BrowserRouter, NavLink, Route, Routes } from "react-router";
 import { AdminOverviewPage } from "./pages/AdminOverviewPage";
 import { LoginPage } from "./pages/LoginPage";
 import { OwnerOverviewPage } from "./pages/OwnerOverviewPage";
@@ -7,9 +7,11 @@ export function App() {
   return (
     <BrowserRouter>
       <nav className="topbar">
-        <Link to="/">OPL Console</Link>
-        <Link to="/login">Login</Link>
-        <Link to="/admin">Admin</Link>
+        <NavLink to="/" end>
+          OPL Console
+        </NavLink>
+        <NavLink to="/login">Login</NavLink>
+        <NavLink to="/admin">Admin</NavLink>
       </nav>
       <Routes>
         <Route path="/" element={<OwnerOverviewPage />} />
