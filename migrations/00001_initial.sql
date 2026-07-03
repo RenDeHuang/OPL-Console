@@ -42,17 +42,22 @@ CREATE TABLE billing_accounts (
   id TEXT PRIMARY KEY,
   owner_type TEXT NOT NULL CHECK (owner_type IN ('user', 'organization')),
   owner_id TEXT NOT NULL,
-  balance_fen BIGINT NOT NULL DEFAULT 0,
-  frozen_fen BIGINT NOT NULL DEFAULT 0,
+  balance_fen BIGINT NOT NULL DEFAULT 0 CONSTRAINT billing_accounts_balance_fen_check CHECK (balance_fen >= 0),
+  frozen_fen BIGINT NOT NULL DEFAULT 0 CONSTRAINT billing_accounts_frozen_fen_check CHECK (frozen_fen >= 0),
   status TEXT NOT NULL DEFAULT 'active',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT billing_accounts_frozen_balance_check CHECK (frozen_fen <= balance_fen)
 );
+
+ALTER TABLE organizations
+  ADD CONSTRAINT organizations_billing_account_id_fkey
+  FOREIGN KEY (billing_account_id) REFERENCES billing_accounts(id);
 
 CREATE TABLE wallet_transactions (
   id TEXT PRIMARY KEY,
   billing_account_id TEXT NOT NULL REFERENCES billing_accounts(id),
-  amount_fen BIGINT NOT NULL,
+  amount_fen BIGINT NOT NULL CONSTRAINT wallet_transactions_amount_fen_check CHECK (amount_fen <> 0),
   kind TEXT NOT NULL,
   reason TEXT NOT NULL,
   actor_user_id TEXT NOT NULL,
@@ -64,7 +69,7 @@ CREATE TABLE wallet_holds (
   billing_account_id TEXT NOT NULL REFERENCES billing_accounts(id),
   resource_type TEXT NOT NULL,
   resource_id TEXT NOT NULL,
-  amount_fen BIGINT NOT NULL,
+  amount_fen BIGINT NOT NULL CONSTRAINT wallet_holds_amount_fen_check CHECK (amount_fen > 0),
   status TEXT NOT NULL CHECK (status IN ('active', 'released', 'debited')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -76,7 +81,7 @@ CREATE TABLE billing_ledger_entries (
   workspace_id TEXT,
   resource_type TEXT NOT NULL,
   resource_id TEXT,
-  amount_fen BIGINT NOT NULL,
+  amount_fen BIGINT NOT NULL CONSTRAINT billing_ledger_entries_amount_fen_check CHECK (amount_fen <> 0),
   kind TEXT NOT NULL,
   description TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -85,7 +90,7 @@ CREATE TABLE billing_ledger_entries (
 CREATE TABLE manual_topups (
   id TEXT PRIMARY KEY,
   billing_account_id TEXT NOT NULL REFERENCES billing_accounts(id),
-  amount_fen BIGINT NOT NULL,
+  amount_fen BIGINT NOT NULL CONSTRAINT manual_topups_amount_fen_check CHECK (amount_fen > 0),
   actor_user_id TEXT NOT NULL,
   note TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -94,11 +99,11 @@ CREATE TABLE manual_topups (
 CREATE TABLE workspace_packages (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  cpu INTEGER NOT NULL,
-  memory_gb INTEGER NOT NULL,
-  storage_gb INTEGER NOT NULL,
-  compute_hourly_fen BIGINT NOT NULL,
-  storage_gb_month_fen BIGINT NOT NULL,
+  cpu INTEGER NOT NULL CONSTRAINT workspace_packages_cpu_check CHECK (cpu > 0),
+  memory_gb INTEGER NOT NULL CONSTRAINT workspace_packages_memory_gb_check CHECK (memory_gb > 0),
+  storage_gb INTEGER NOT NULL CONSTRAINT workspace_packages_storage_gb_check CHECK (storage_gb > 0),
+  compute_hourly_fen BIGINT NOT NULL CONSTRAINT workspace_packages_compute_hourly_fen_check CHECK (compute_hourly_fen >= 0),
+  storage_gb_month_fen BIGINT NOT NULL CONSTRAINT workspace_packages_storage_gb_month_fen_check CHECK (storage_gb_month_fen >= 0),
   available BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -118,7 +123,7 @@ CREATE TABLE storage_volumes (
   billing_account_id TEXT NOT NULL REFERENCES billing_accounts(id),
   package_id TEXT NOT NULL REFERENCES workspace_packages(id),
   provider_resource_id TEXT,
-  size_gb INTEGER NOT NULL,
+  size_gb INTEGER NOT NULL CONSTRAINT storage_volumes_size_gb_check CHECK (size_gb > 0),
   status TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -157,6 +162,13 @@ CREATE TABLE workspace_tokens (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE UNIQUE INDEX workspace_tokens_one_active_per_workspace_idx
+  ON workspace_tokens(workspace_id)
+  WHERE status = 'active';
+
+CREATE INDEX workspace_tokens_token_hash_idx
+  ON workspace_tokens(token_hash);
+
 CREATE TABLE runtime_operations (
   id TEXT PRIMARY KEY,
   operation_type TEXT NOT NULL,
@@ -169,7 +181,8 @@ CREATE TABLE runtime_operations (
   error_message TEXT,
   request_id TEXT NOT NULL,
   started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  finished_at TIMESTAMPTZ
+  finished_at TIMESTAMPTZ,
+  CONSTRAINT runtime_operations_operation_type_request_id_key UNIQUE (operation_type, request_id)
 );
 
 CREATE TABLE support_tickets (
@@ -237,8 +250,8 @@ DROP TABLE manual_topups;
 DROP TABLE billing_ledger_entries;
 DROP TABLE wallet_holds;
 DROP TABLE wallet_transactions;
-DROP TABLE billing_accounts;
 DROP TABLE sessions;
 DROP TABLE memberships;
 DROP TABLE organizations;
+DROP TABLE billing_accounts;
 DROP TABLE users;
