@@ -2,8 +2,9 @@ package postgres
 
 import (
 	"context"
-	"fmt"
+	"errors"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/RenDeHuang/opl-console/internal/ledger"
@@ -41,7 +42,7 @@ func (s *Store) FreezeHold(ctx context.Context, request ledger.HoldRequest) erro
 		return err
 	}
 	if available < request.AmountFen {
-		return fmt.Errorf("insufficient_balance")
+		return ledger.ErrInsufficientBalance
 	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO wallet_holds (id, billing_account_id, resource_type, resource_id, amount_fen, status)
@@ -58,35 +59,63 @@ func (s *Store) FreezeHold(ctx context.Context, request ledger.HoldRequest) erro
 }
 
 func (s *Store) ReleaseHold(ctx context.Context, holdID string, actorUserID string) error {
-	_, err := s.pool.Exec(ctx, `
-		WITH hold AS (
-			UPDATE wallet_holds SET status = 'released', updated_at = now()
-			WHERE id = $1 AND status = 'active'
-			RETURNING billing_account_id, amount_fen
-		)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	var billingAccountID string
+	var amountFen int64
+	if err := tx.QueryRow(ctx, `
+		UPDATE wallet_holds SET status = 'released', updated_at = now()
+		WHERE id = $1 AND status = 'active'
+		RETURNING billing_account_id, amount_fen
+	`, holdID).Scan(&billingAccountID, &amountFen); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ledger.ErrHoldNotActive
+		}
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
 		UPDATE billing_accounts
-		SET frozen_fen = frozen_fen - hold.amount_fen, updated_at = now()
-		FROM hold
-		WHERE billing_accounts.id = hold.billing_account_id
-	`, holdID)
-	return err
+		SET frozen_fen = frozen_fen - $1, updated_at = now()
+		WHERE id = $2
+	`, amountFen, billingAccountID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *Store) DebitHold(ctx context.Context, holdID string, actorUserID string) error {
-	_, err := s.pool.Exec(ctx, `
-		WITH hold AS (
-			UPDATE wallet_holds SET status = 'debited', updated_at = now()
-			WHERE id = $1 AND status = 'active'
-			RETURNING billing_account_id, amount_fen
-		)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	var billingAccountID string
+	var amountFen int64
+	if err := tx.QueryRow(ctx, `
+		UPDATE wallet_holds SET status = 'debited', updated_at = now()
+		WHERE id = $1 AND status = 'active'
+		RETURNING billing_account_id, amount_fen
+	`, holdID).Scan(&billingAccountID, &amountFen); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ledger.ErrHoldNotActive
+		}
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
 		UPDATE billing_accounts
-		SET frozen_fen = frozen_fen - hold.amount_fen,
-		    balance_fen = balance_fen - hold.amount_fen,
+		SET frozen_fen = frozen_fen - $1,
+		    balance_fen = balance_fen - $1,
 		    updated_at = now()
-		FROM hold
-		WHERE billing_accounts.id = hold.billing_account_id
-	`, holdID)
-	return err
+		WHERE id = $2
+	`, amountFen, billingAccountID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *Store) RecordManualTopUp(ctx context.Context, request ledger.TopUpRequest) error {

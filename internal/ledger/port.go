@@ -1,6 +1,14 @@
 package ledger
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+var (
+	ErrInsufficientBalance = errors.New("insufficient_balance")
+	ErrHoldNotActive       = errors.New("hold_not_active")
+)
 
 type Wallet struct {
 	BillingAccountID string `json:"billingAccountId"`
