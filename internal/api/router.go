@@ -16,6 +16,7 @@ type Dependencies struct {
 	RuntimeReady      func() Readiness
 	ProductionReady   func() Readiness
 	Auth              AuthService
+	Governance        GovernanceService
 	SessionCookieName string
 }
 
@@ -43,6 +44,7 @@ func NewRouter(deps Dependencies) http.Handler {
 		writeJSON(w, http.StatusOK, check())
 	})
 	mountAuthRoutes(router, deps)
+	mountGovernanceRoutes(router, deps)
 	return router
 }
 

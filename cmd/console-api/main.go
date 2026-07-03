@@ -9,6 +9,7 @@ import (
 	"github.com/RenDeHuang/opl-console/internal/api"
 	"github.com/RenDeHuang/opl-console/internal/auth"
 	"github.com/RenDeHuang/opl-console/internal/config"
+	"github.com/RenDeHuang/opl-console/internal/console"
 	"github.com/RenDeHuang/opl-console/internal/store"
 )
 
@@ -34,9 +35,11 @@ func main() {
 		Users:    authStore,
 		Sessions: authStore,
 	})
+	governanceService := console.NewService(store.NewGovernanceStore(pool))
 
 	router := api.NewRouter(api.Dependencies{
 		Auth:              authService,
+		Governance:        governanceService,
 		SessionCookieName: cfg.SessionCookieName,
 		RuntimeReady: func() api.Readiness {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
