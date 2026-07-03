@@ -7,9 +7,16 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+type Router interface {
+	Get(pattern string, handlerFn http.HandlerFunc)
+	Post(pattern string, handlerFn http.HandlerFunc)
+}
+
 type Dependencies struct {
-	RuntimeReady    func() Readiness
-	ProductionReady func() Readiness
+	RuntimeReady      func() Readiness
+	ProductionReady   func() Readiness
+	Auth              AuthService
+	SessionCookieName string
 }
 
 func NewRouter(deps Dependencies) http.Handler {
@@ -35,6 +42,7 @@ func NewRouter(deps Dependencies) http.Handler {
 		}
 		writeJSON(w, http.StatusOK, check())
 	})
+	mountAuthRoutes(router, deps)
 	return router
 }
 

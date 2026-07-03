@@ -17,6 +17,7 @@ type Config struct {
 	WorkspaceImage        string
 	WorkspaceStorageClass string
 	SessionCookieName     string
+	ConsoleUsersJSON      string
 }
 
 func Load() (Config, error) {
@@ -31,6 +32,7 @@ func Load() (Config, error) {
 		WorkspaceImage:        env("OPL_WORKSPACE_IMAGE", "ghcr.io/gaofeng21cn/one-person-lab-app:latest"),
 		WorkspaceStorageClass: env("OPL_WORKSPACE_STORAGE_CLASS", "cbs"),
 		SessionCookieName:     env("OPL_SESSION_COOKIE_NAME", "opl_console_session"),
+		ConsoleUsersJSON:      env("OPL_CONSOLE_USERS_JSON", ""),
 	}
 	if cfg.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("DATABASE_URL is required")

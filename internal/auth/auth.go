@@ -1,7 +1,18 @@
 package auth
 
+import (
+	"errors"
+	"time"
+)
+
 type Role string
 type Status string
+
+var (
+	ErrInvalidCredentials = errors.New("invalid_credentials")
+	ErrUserDisabled       = errors.New("user_disabled")
+	ErrSessionNotFound    = errors.New("session_not_found")
+)
 
 const (
 	RoleOwner Role = "owner"
@@ -16,6 +27,13 @@ type User struct {
 	Email  string
 	Role   Role
 	Status Status
+}
+
+type Session struct {
+	Token     string
+	CSRFToken string
+	User      User
+	ExpiresAt time.Time
 }
 
 func CanAccessOwner(user User) bool {
