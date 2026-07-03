@@ -137,3 +137,25 @@ func (s *Store) RecordManualTopUp(ctx context.Context, request ledger.TopUpReque
 	}
 	return tx.Commit(ctx)
 }
+
+func (s *Store) RecordAuditEvent(ctx context.Context, event ledger.AuditEvent) error {
+	if len(event.Metadata) == 0 {
+		event.Metadata = []byte(`{}`)
+	}
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO audit_events (id, actor_user_id, action, object_type, object_id, request_id, result, metadata)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	`, event.ID, event.ActorUserID, event.Action, event.ObjectType, event.ObjectID, event.RequestID, event.Result, event.Metadata)
+	return err
+}
+
+func (s *Store) RecordReceipt(ctx context.Context, receipt ledger.Receipt) error {
+	if len(receipt.Payload) == 0 {
+		receipt.Payload = []byte(`{}`)
+	}
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO receipts (id, receipt_type, subject_type, subject_id, operation_id, payload)
+		VALUES ($1, $2, $3, $4, $5, $6)
+	`, receipt.ID, receipt.ReceiptType, receipt.SubjectType, receipt.SubjectID, receipt.OperationID, receipt.Payload)
+	return err
+}
