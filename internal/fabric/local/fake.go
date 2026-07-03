@@ -36,6 +36,22 @@ func (f *Fake) DestroyStorage(ctx context.Context, request fabric.DestroyStorage
 	return nil
 }
 
+func (f *Fake) DestroyWorkspaceRoute(ctx context.Context, request fabric.DestroyWorkspaceRouteRequest) error {
+	return nil
+}
+
+func (f *Fake) ResetWorkspaceToken(ctx context.Context, request fabric.ResetWorkspaceTokenRequest) (fabric.RuntimeHandle, error) {
+	return fabric.RuntimeHandle{
+		ProviderResourceID: "local-route/" + request.WorkspaceID,
+		Status:             "ready",
+		URL:                "http://127.0.0.1:8787/w/" + request.WorkspaceID + "?token=" + request.Token,
+	}, nil
+}
+
+func (f *Fake) DeleteWorkspaceToken(ctx context.Context, request fabric.DeleteWorkspaceTokenRequest) error {
+	return nil
+}
+
 func (f *Fake) CreateWorkspaceRoute(ctx context.Context, request fabric.CreateRouteRequest) (fabric.RuntimeHandle, error) {
 	slug := strings.ToLower(strings.ReplaceAll(request.WorkspaceName, " ", "-"))
 	return fabric.RuntimeHandle{

@@ -79,7 +79,7 @@ func TestCreateWorkspaceUsesFabricPort(t *testing.T) {
 	}
 }
 
-func TestCreateWorkspaceWrapsComputeErrorAndCleansStorage(t *testing.T) {
+func TestCreateWorkspaceWrapsComputeErrorAndPreservesStorage(t *testing.T) {
 	providerErr := errors.New("provider compute failed")
 	fabricPort := &recordingFabric{createComputeErr: providerErr}
 	service := NewService(fabricPort)
@@ -103,16 +103,47 @@ func TestCreateWorkspaceWrapsComputeErrorAndCleansStorage(t *testing.T) {
 	assertCalls(t, fabricPort.calls, []string{
 		"create_storage",
 		"create_compute",
-		"destroy_storage",
 	})
-	if fabricPort.destroyStorage.StorageID != "stg-ws-alpha" {
-		t.Fatalf("destroy storage id = %q", fabricPort.destroyStorage.StorageID)
+}
+
+func TestCreateWorkspaceWrapsAttachErrorAndDestroysComputeOnly(t *testing.T) {
+	providerErr := errors.New("provider attach failed")
+	fabricPort := &recordingFabric{attachStorageErr: providerErr}
+	service := NewService(fabricPort)
+
+	_, err := service.CreateWorkspace(context.Background(), CreateWorkspaceRequest{
+		WorkspaceID:      "ws-alpha",
+		Name:             "Alpha Lab",
+		BillingAccountID: "acct-owner",
+		PackageID:        "basic",
+		Token:            "share-token",
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !errors.Is(err, providerErr) {
+		t.Fatalf("error does not preserve provider error: %v", err)
+	}
+	if !strings.Contains(err.Error(), "attach storage") {
+		t.Fatalf("error does not include stage context: %v", err)
+	}
+	assertCalls(t, fabricPort.calls, []string{
+		"create_storage",
+		"create_compute",
+		"attach_storage",
+		"destroy_compute",
+	})
+	if fabricPort.destroyCompute.ComputeID != "cmp-ws-alpha" {
+		t.Fatalf("destroy compute id = %q", fabricPort.destroyCompute.ComputeID)
 	}
 }
 
-func TestCreateWorkspaceWrapsRouteErrorAndCleansComputeAndStorage(t *testing.T) {
+func TestCreateWorkspaceWrapsRouteErrorAndDestroysRouteAndComputeOnly(t *testing.T) {
 	providerErr := errors.New("provider route failed")
-	fabricPort := &recordingFabric{createRouteErr: providerErr}
+	fabricPort := &recordingFabric{
+		route:          fabric.RuntimeHandle{ProviderResourceID: "local-route/ws-alpha"},
+		createRouteErr: providerErr,
+	}
 	service := NewService(fabricPort)
 
 	_, err := service.CreateWorkspace(context.Background(), CreateWorkspaceRequest{
@@ -136,14 +167,14 @@ func TestCreateWorkspaceWrapsRouteErrorAndCleansComputeAndStorage(t *testing.T) 
 		"create_compute",
 		"attach_storage",
 		"create_route",
+		"destroy_route",
 		"destroy_compute",
-		"destroy_storage",
 	})
+	if fabricPort.destroyRoute.WorkspaceID != "ws-alpha" {
+		t.Fatalf("destroy route workspace id = %q", fabricPort.destroyRoute.WorkspaceID)
+	}
 	if fabricPort.destroyCompute.ComputeID != "cmp-ws-alpha" {
 		t.Fatalf("destroy compute id = %q", fabricPort.destroyCompute.ComputeID)
-	}
-	if fabricPort.destroyStorage.StorageID != "stg-ws-alpha" {
-		t.Fatalf("destroy storage id = %q", fabricPort.destroyStorage.StorageID)
 	}
 }
 
@@ -157,10 +188,12 @@ type recordingFabric struct {
 
 	destroyCompute fabric.DestroyComputeRequest
 	destroyStorage fabric.DestroyStorageRequest
+	destroyRoute   fabric.DestroyWorkspaceRouteRequest
 
 	route fabric.RuntimeHandle
 
 	createComputeErr error
+	attachStorageErr error
 	createRouteErr   error
 }
 
@@ -182,6 +215,9 @@ func (f *recordingFabric) CreateStorage(ctx context.Context, request fabric.Crea
 func (f *recordingFabric) AttachStorage(ctx context.Context, request fabric.AttachStorageRequest) (fabric.RuntimeHandle, error) {
 	f.calls = append(f.calls, "attach_storage")
 	f.attachStorage = request
+	if f.attachStorageErr != nil {
+		return fabric.RuntimeHandle{}, f.attachStorageErr
+	}
 	return fabric.RuntimeHandle{ProviderResourceID: request.ComputeID + ":" + request.StorageID, Status: "attached"}, nil
 }
 
@@ -189,7 +225,7 @@ func (f *recordingFabric) CreateWorkspaceRoute(ctx context.Context, request fabr
 	f.calls = append(f.calls, "create_route")
 	f.createRoute = request
 	if f.createRouteErr != nil {
-		return fabric.RuntimeHandle{}, f.createRouteErr
+		return f.route, f.createRouteErr
 	}
 	return f.route, nil
 }
@@ -203,6 +239,20 @@ func (f *recordingFabric) DestroyCompute(ctx context.Context, request fabric.Des
 func (f *recordingFabric) DestroyStorage(ctx context.Context, request fabric.DestroyStorageRequest) error {
 	f.calls = append(f.calls, "destroy_storage")
 	f.destroyStorage = request
+	return nil
+}
+
+func (f *recordingFabric) DestroyWorkspaceRoute(ctx context.Context, request fabric.DestroyWorkspaceRouteRequest) error {
+	f.calls = append(f.calls, "destroy_route")
+	f.destroyRoute = request
+	return nil
+}
+
+func (f *recordingFabric) ResetWorkspaceToken(ctx context.Context, request fabric.ResetWorkspaceTokenRequest) (fabric.RuntimeHandle, error) {
+	return fabric.RuntimeHandle{}, nil
+}
+
+func (f *recordingFabric) DeleteWorkspaceToken(ctx context.Context, request fabric.DeleteWorkspaceTokenRequest) error {
 	return nil
 }
 

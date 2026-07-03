@@ -42,26 +42,23 @@ func (s *Service) CreateWorkspace(ctx context.Context, request CreateWorkspaceRe
 	if _, err := s.fabric.CreateCompute(ctx, fabric.CreateComputeRequest{
 		ComputeID: computeID, BillingAccountID: request.BillingAccountID, Package: plan,
 	}); err != nil {
-		_ = s.fabric.DestroyStorage(ctx, fabric.DestroyStorageRequest{StorageID: storageID})
 		return CreateWorkspaceResult{}, fmt.Errorf("create compute: %w", err)
 	}
 	if _, err := s.fabric.AttachStorage(ctx, fabric.AttachStorageRequest{
 		AttachmentID: attachmentID, ComputeID: computeID, StorageID: storageID, MountPath: "/data",
 	}); err != nil {
-		s.cleanupRuntime(ctx, computeID, storageID)
+		_ = s.fabric.DestroyCompute(ctx, fabric.DestroyComputeRequest{ComputeID: computeID})
 		return CreateWorkspaceResult{}, fmt.Errorf("attach storage: %w", err)
 	}
 	route, err := s.fabric.CreateWorkspaceRoute(ctx, fabric.CreateRouteRequest{
 		WorkspaceID: request.WorkspaceID, WorkspaceName: request.Name, ComputeID: computeID, Token: request.Token,
 	})
 	if err != nil {
-		s.cleanupRuntime(ctx, computeID, storageID)
+		if route.ProviderResourceID != "" {
+			_ = s.fabric.DestroyWorkspaceRoute(ctx, fabric.DestroyWorkspaceRouteRequest{WorkspaceID: request.WorkspaceID})
+		}
+		_ = s.fabric.DestroyCompute(ctx, fabric.DestroyComputeRequest{ComputeID: computeID})
 		return CreateWorkspaceResult{}, fmt.Errorf("create workspace route: %w", err)
 	}
 	return CreateWorkspaceResult{WorkspaceID: request.WorkspaceID, URL: route.URL}, nil
-}
-
-func (s *Service) cleanupRuntime(ctx context.Context, computeID, storageID string) {
-	_ = s.fabric.DestroyCompute(ctx, fabric.DestroyComputeRequest{ComputeID: computeID})
-	_ = s.fabric.DestroyStorage(ctx, fabric.DestroyStorageRequest{StorageID: storageID})
 }

@@ -36,6 +36,19 @@ type DestroyStorageRequest struct {
 	StorageID string
 }
 
+type DestroyWorkspaceRouteRequest struct {
+	WorkspaceID string
+}
+
+type ResetWorkspaceTokenRequest struct {
+	WorkspaceID string
+	Token       string
+}
+
+type DeleteWorkspaceTokenRequest struct {
+	WorkspaceID string
+}
+
 type CreateRouteRequest struct {
 	WorkspaceID   string
 	WorkspaceName string
@@ -56,4 +69,7 @@ type Port interface {
 	CreateWorkspaceRoute(ctx context.Context, request CreateRouteRequest) (RuntimeHandle, error)
 	DestroyCompute(ctx context.Context, request DestroyComputeRequest) error
 	DestroyStorage(ctx context.Context, request DestroyStorageRequest) error
+	DestroyWorkspaceRoute(ctx context.Context, request DestroyWorkspaceRouteRequest) error
+	ResetWorkspaceToken(ctx context.Context, request ResetWorkspaceTokenRequest) (RuntimeHandle, error)
+	DeleteWorkspaceToken(ctx context.Context, request DeleteWorkspaceTokenRequest) error
 }
