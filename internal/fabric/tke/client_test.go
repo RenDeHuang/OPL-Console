@@ -189,6 +189,45 @@ func TestCreateWorkspaceRouteCreatesTokenSecretAndIngress(t *testing.T) {
 	}
 }
 
+func TestCreateWorkspaceRouteRollsBackTokenSecretWhenIngressCreateFails(t *testing.T) {
+	clientset := fake.NewSimpleClientset()
+	clientset.PrependReactor("create", "ingresses", func(action clientgotesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("ingress create failed")
+	})
+	client := New(testConfig(), clientset)
+
+	_, err := client.CreateWorkspaceRoute(context.Background(), fabric.CreateRouteRequest{
+		WorkspaceID:   "ws-alpha",
+		WorkspaceName: "Alpha",
+		ComputeID:     "cmp-ws-alpha",
+		Token:         "token-1",
+	})
+	if err == nil {
+		t.Fatal("create workspace route error = nil")
+	}
+	if !strings.Contains(err.Error(), "create ingress") {
+		t.Fatalf("error = %v, want wrapped ingress error", err)
+	}
+
+	if _, err := client.client.CoreV1().Secrets("opl-cloud").Get(context.Background(), "workspace-ws-alpha-token", metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Fatalf("secret get err = %v, want not found after rollback", err)
+	}
+}
+
+func TestDNS1123NameAddsHashWhenSanitizationChangesValue(t *testing.T) {
+	rawIDs := []string{"WS_ALPHA", "ws-alpha", "ws.alpha", "ws alpha"}
+	names := map[string]string{}
+
+	for _, rawID := range rawIDs {
+		name := dns1123Name(rawID)
+		assertDNS1123Name(t, name)
+		if existingRawID, ok := names[name]; ok {
+			t.Fatalf("dns1123Name(%q) and dns1123Name(%q) both produced %q", existingRawID, rawID, name)
+		}
+		names[name] = rawID
+	}
+}
+
 func TestCreateMethodsUseDNS1123SafeResourceNamesAndAnnotateOriginalIDs(t *testing.T) {
 	client := New(testConfig(), fake.NewSimpleClientset())
 	ctx := context.Background()
@@ -421,6 +460,50 @@ func TestResetWorkspaceTokenCreatesUpdatesSecretAndReturnsURL(t *testing.T) {
 	secret, err := client.client.CoreV1().Secrets("opl-cloud").Get(ctx, "workspace-ws-alpha-token", metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("get token secret: %v", err)
+	}
+	if got := string(secret.Data["token"]); got != "token-2" {
+		t.Fatalf("secret token = %q", got)
+	}
+}
+
+func TestResetWorkspaceTokenMergesRequiredSecretLabelsAndAnnotations(t *testing.T) {
+	clientset := fake.NewSimpleClientset(&corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      tokenSecretName("ws-alpha"),
+			Namespace: "opl-cloud",
+			Labels: map[string]string{
+				"existing-label": "keep",
+			},
+			Annotations: map[string]string{
+				"existing-annotation": "keep",
+			},
+		},
+		Data: map[string][]byte{"token": []byte("old-token")},
+	})
+	client := New(testConfig(), clientset)
+
+	if _, err := client.ResetWorkspaceToken(context.Background(), fabric.ResetWorkspaceTokenRequest{
+		WorkspaceID: "ws-alpha",
+		Token:       "token-2",
+	}); err != nil {
+		t.Fatalf("reset workspace token: %v", err)
+	}
+
+	secret, err := client.client.CoreV1().Secrets("opl-cloud").Get(context.Background(), tokenSecretName("ws-alpha"), metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get token secret: %v", err)
+	}
+	if got := secret.Labels["existing-label"]; got != "keep" {
+		t.Fatalf("existing label = %q", got)
+	}
+	if got := secret.Labels["app.kubernetes.io/component"]; got != "route" {
+		t.Fatalf("required label = %q", got)
+	}
+	if got := secret.Annotations["existing-annotation"]; got != "keep" {
+		t.Fatalf("existing annotation = %q", got)
+	}
+	if got := secret.Annotations["opl.one-person-lab/original-workspace-id"]; got != "ws-alpha" {
+		t.Fatalf("required annotation = %q", got)
 	}
 	if got := string(secret.Data["token"]); got != "token-2" {
 		t.Fatalf("secret token = %q", got)

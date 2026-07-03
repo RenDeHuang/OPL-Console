@@ -190,6 +190,7 @@ func (c *Client) CreateWorkspaceRoute(ctx context.Context, request fabric.Create
 	}
 
 	if _, err := c.client.NetworkingV1().Ingresses(c.cfg.Namespace).Create(ctx, ingress, metav1.CreateOptions{}); err != nil {
+		_ = c.DeleteWorkspaceToken(ctx, fabric.DeleteWorkspaceTokenRequest{WorkspaceID: request.WorkspaceID})
 		return fabric.RuntimeHandle{}, fmt.Errorf("create ingress: %w", err)
 	}
 
@@ -242,12 +243,8 @@ func (c *Client) upsertTokenSecret(ctx context.Context, workspaceID, token strin
 	}
 
 	secret.Data = map[string][]byte{"token": []byte(token)}
-	if secret.Labels == nil {
-		secret.Labels = routeLabels(workspaceID)
-	}
-	if secret.Annotations == nil {
-		secret.Annotations = originalWorkspaceAnnotations(workspaceID)
-	}
+	secret.Labels = mergeStringMap(secret.Labels, routeLabels(workspaceID))
+	secret.Annotations = mergeStringMap(secret.Annotations, originalWorkspaceAnnotations(workspaceID))
 	return secrets.Update(ctx, secret, metav1.UpdateOptions{})
 }
 
@@ -340,11 +337,14 @@ func dns1123Name(value string) string {
 	if name == "" {
 		name = "x-" + hash
 	}
-	if len(name) <= maxDNS1123LabelLength {
+	if name == value && len(name) <= maxDNS1123LabelLength {
 		return name
 	}
 
 	prefixLength := maxDNS1123LabelLength - len(hash) - 1
+	if len(name) < prefixLength {
+		prefixLength = len(name)
+	}
 	prefix := strings.Trim(name[:prefixLength], "-")
 	if prefix == "" {
 		return "x-" + hash
@@ -373,4 +373,14 @@ func sanitizeDNS1123(value string) string {
 func shortHash(value string) string {
 	sum := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(sum[:])[:8]
+}
+
+func mergeStringMap(existing, required map[string]string) map[string]string {
+	if existing == nil {
+		existing = map[string]string{}
+	}
+	for key, value := range required {
+		existing[key] = value
+	}
+	return existing
 }
