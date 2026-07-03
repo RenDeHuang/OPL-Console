@@ -205,6 +205,24 @@ button.danger {
   border-top: 1px solid #edf0f5;
 }
 
+.workspace-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) 100px 120px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 0;
+  border-top: 1px solid #edf0f5;
+}
+
+.workspace-row:first-child {
+  border-top: 0;
+}
+
+.workspace-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .approval-row:first-child {
   border-top: 0;
 }
@@ -236,7 +254,8 @@ button.danger {
   .grid.three,
   .row,
   .form-grid,
-  .approval-row {
+  .approval-row,
+  .workspace-row {
     grid-template-columns: 1fr;
   }
 

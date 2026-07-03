@@ -44,6 +44,10 @@ type Repository interface {
 	CreateApproval(ctx context.Context, request ApprovalRequest) (string, error)
 	SaveCreated(ctx context.Context, record CreatedWorkspace) error
 	Handoff(ctx context.Context, request HandoffRequest) (HandoffResult, error)
+	RuntimeForAction(ctx context.Context, request ActionRequest) (RuntimeRecord, error)
+	UpdateWorkspaceState(ctx context.Context, change StateChange) error
+	ReplaceActiveToken(ctx context.Context, change TokenChange) error
+	DeleteActiveToken(ctx context.Context, request ActionRequest) error
 }
 
 type CreateContext struct {
@@ -108,11 +112,150 @@ type HandoffResult struct {
 	State       string `json:"state"`
 }
 
+type ActionRequest struct {
+	WorkspaceID string `json:"workspaceId"`
+	ActorUserID string `json:"-"`
+}
+
+type TokenRequest struct {
+	WorkspaceID string `json:"workspaceId"`
+	ActorUserID string `json:"-"`
+	Token       string `json:"token"`
+}
+
+type ActionResult struct {
+	WorkspaceID string `json:"workspaceId"`
+	State       string `json:"state"`
+	URL         string `json:"url,omitempty"`
+}
+
+type RuntimeRecord struct {
+	WorkspaceID      string
+	ActorUserID      string
+	BillingAccountID string
+	ComputeID        string
+	StorageID        string
+	State            string
+}
+
+type StateChange struct {
+	WorkspaceID string
+	ActorUserID string
+	State       string
+}
+
+type TokenChange struct {
+	WorkspaceID string
+	ActorUserID string
+	Token       string
+	URL         string
+}
+
 func (s *Service) Handoff(ctx context.Context, request HandoffRequest) (HandoffResult, error) {
 	if s.repo == nil {
 		return HandoffResult{}, fmt.Errorf("workspace repository not configured")
 	}
 	return s.repo.Handoff(ctx, request)
+}
+
+func (s *Service) ConfigureWorkspace(ctx context.Context, request ActionRequest) (ActionResult, error) {
+	if _, err := s.runtimeForAction(ctx, request); err != nil {
+		return ActionResult{}, err
+	}
+	if err := s.repo.UpdateWorkspaceState(ctx, StateChange{WorkspaceID: request.WorkspaceID, ActorUserID: request.ActorUserID, State: "configured"}); err != nil {
+		return ActionResult{}, fmt.Errorf("configure workspace state: %w", err)
+	}
+	if err := s.recordAudit(ctx, request.ActorUserID, "workspace.configure", request.WorkspaceID, "succeeded", map[string]string{"state": "configured"}); err != nil {
+		return ActionResult{}, err
+	}
+	return ActionResult{WorkspaceID: request.WorkspaceID, State: "configured"}, nil
+}
+
+func (s *Service) SuspendWorkspace(ctx context.Context, request ActionRequest) (ActionResult, error) {
+	if _, err := s.runtimeForAction(ctx, request); err != nil {
+		return ActionResult{}, err
+	}
+	if err := s.fabric.DestroyWorkspaceRoute(ctx, fabric.DestroyWorkspaceRouteRequest{WorkspaceID: request.WorkspaceID}); err != nil {
+		return ActionResult{}, fmt.Errorf("destroy workspace route: %w", err)
+	}
+	if err := s.repo.UpdateWorkspaceState(ctx, StateChange{WorkspaceID: request.WorkspaceID, ActorUserID: request.ActorUserID, State: "suspended"}); err != nil {
+		return ActionResult{}, fmt.Errorf("suspend workspace state: %w", err)
+	}
+	if err := s.recordAudit(ctx, request.ActorUserID, "workspace.suspend", request.WorkspaceID, "succeeded", map[string]string{"state": "suspended"}); err != nil {
+		return ActionResult{}, err
+	}
+	return ActionResult{WorkspaceID: request.WorkspaceID, State: "suspended"}, nil
+}
+
+func (s *Service) DeleteWorkspace(ctx context.Context, request ActionRequest) (ActionResult, error) {
+	runtime, err := s.runtimeForAction(ctx, request)
+	if err != nil {
+		return ActionResult{}, err
+	}
+	if err := s.fabric.DestroyWorkspaceRoute(ctx, fabric.DestroyWorkspaceRouteRequest{WorkspaceID: request.WorkspaceID}); err != nil {
+		return ActionResult{}, fmt.Errorf("destroy workspace route: %w", err)
+	}
+	if runtime.ComputeID != "" {
+		if err := s.fabric.DestroyCompute(ctx, fabric.DestroyComputeRequest{ComputeID: runtime.ComputeID}); err != nil {
+			return ActionResult{}, fmt.Errorf("destroy compute: %w", err)
+		}
+	}
+	if runtime.StorageID != "" {
+		if err := s.fabric.DestroyStorage(ctx, fabric.DestroyStorageRequest{StorageID: runtime.StorageID}); err != nil {
+			return ActionResult{}, fmt.Errorf("destroy storage: %w", err)
+		}
+	}
+	if err := s.repo.UpdateWorkspaceState(ctx, StateChange{WorkspaceID: request.WorkspaceID, ActorUserID: request.ActorUserID, State: "deleted"}); err != nil {
+		return ActionResult{}, fmt.Errorf("delete workspace state: %w", err)
+	}
+	if err := s.recordAudit(ctx, request.ActorUserID, "workspace.delete", request.WorkspaceID, "succeeded", map[string]string{"state": "deleted"}); err != nil {
+		return ActionResult{}, err
+	}
+	return ActionResult{WorkspaceID: request.WorkspaceID, State: "deleted"}, nil
+}
+
+func (s *Service) ResetWorkspaceToken(ctx context.Context, request TokenRequest) (ActionResult, error) {
+	if _, err := s.runtimeForAction(ctx, ActionRequest{WorkspaceID: request.WorkspaceID, ActorUserID: request.ActorUserID}); err != nil {
+		return ActionResult{}, err
+	}
+	route, err := s.fabric.ResetWorkspaceToken(ctx, fabric.ResetWorkspaceTokenRequest{WorkspaceID: request.WorkspaceID, Token: request.Token})
+	if err != nil {
+		return ActionResult{}, fmt.Errorf("reset workspace token: %w", err)
+	}
+	if err := s.repo.ReplaceActiveToken(ctx, TokenChange{WorkspaceID: request.WorkspaceID, ActorUserID: request.ActorUserID, Token: request.Token, URL: route.URL}); err != nil {
+		return ActionResult{}, fmt.Errorf("replace workspace token: %w", err)
+	}
+	if err := s.recordAudit(ctx, request.ActorUserID, "workspace.token.reset", request.WorkspaceID, "succeeded", map[string]string{"url": route.URL}); err != nil {
+		return ActionResult{}, err
+	}
+	return ActionResult{WorkspaceID: request.WorkspaceID, State: "ready", URL: route.URL}, nil
+}
+
+func (s *Service) DeleteWorkspaceToken(ctx context.Context, request ActionRequest) (ActionResult, error) {
+	if _, err := s.runtimeForAction(ctx, request); err != nil {
+		return ActionResult{}, err
+	}
+	if err := s.fabric.DeleteWorkspaceToken(ctx, fabric.DeleteWorkspaceTokenRequest{WorkspaceID: request.WorkspaceID}); err != nil {
+		return ActionResult{}, fmt.Errorf("delete workspace token: %w", err)
+	}
+	if err := s.repo.DeleteActiveToken(ctx, request); err != nil {
+		return ActionResult{}, fmt.Errorf("delete active token: %w", err)
+	}
+	if err := s.recordAudit(ctx, request.ActorUserID, "workspace.token.delete", request.WorkspaceID, "succeeded", map[string]string{"state": "token_deleted"}); err != nil {
+		return ActionResult{}, err
+	}
+	return ActionResult{WorkspaceID: request.WorkspaceID, State: "token_deleted"}, nil
+}
+
+func (s *Service) runtimeForAction(ctx context.Context, request ActionRequest) (RuntimeRecord, error) {
+	if s.repo == nil {
+		return RuntimeRecord{}, fmt.Errorf("workspace repository not configured")
+	}
+	runtime, err := s.repo.RuntimeForAction(ctx, request)
+	if err != nil {
+		return RuntimeRecord{}, fmt.Errorf("load workspace runtime: %w", err)
+	}
+	return runtime, nil
 }
 
 func (s *Service) CreateWorkspace(ctx context.Context, request CreateWorkspaceRequest) (CreateWorkspaceResult, error) {

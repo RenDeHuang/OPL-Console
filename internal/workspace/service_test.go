@@ -299,6 +299,54 @@ func TestCreateWorkspacePersistsFacadeStateAndLedgerEvidence(t *testing.T) {
 	}
 }
 
+func TestSuspendWorkspaceDestroysRouteAndUpdatesState(t *testing.T) {
+	fabricPort := &recordingFabric{}
+	repository := &recordingWorkspaceRepository{
+		runtime: RuntimeRecord{WorkspaceID: "ws-alpha", ActorUserID: "usr-owner", ComputeID: "cmp-ws-alpha", StorageID: "stg-ws-alpha"},
+	}
+	ledgerPort := &recordingLedger{}
+	service := NewService(fabricPort, WithRepository(repository), WithLedger(ledgerPort))
+
+	result, err := service.SuspendWorkspace(context.Background(), ActionRequest{WorkspaceID: "ws-alpha", ActorUserID: "usr-owner"})
+	if err != nil {
+		t.Fatalf("SuspendWorkspace: %v", err)
+	}
+	if result.State != "suspended" {
+		t.Fatalf("result = %#v", result)
+	}
+	assertCalls(t, fabricPort.calls, []string{"destroy_route"})
+	if len(repository.stateChanges) != 1 || repository.stateChanges[0].State != "suspended" {
+		t.Fatalf("state changes = %#v", repository.stateChanges)
+	}
+	if len(ledgerPort.auditEvents) != 1 || ledgerPort.auditEvents[0].Action != "workspace.suspend" {
+		t.Fatalf("audit events = %#v", ledgerPort.auditEvents)
+	}
+}
+
+func TestResetWorkspaceTokenCallsFabricAndReplacesToken(t *testing.T) {
+	fabricPort := &recordingFabric{}
+	repository := &recordingWorkspaceRepository{
+		runtime: RuntimeRecord{WorkspaceID: "ws-alpha", ActorUserID: "usr-owner", ComputeID: "cmp-ws-alpha", StorageID: "stg-ws-alpha"},
+	}
+	service := NewService(fabricPort, WithRepository(repository))
+
+	result, err := service.ResetWorkspaceToken(context.Background(), TokenRequest{
+		WorkspaceID: "ws-alpha",
+		ActorUserID: "usr-owner",
+		Token:       "new-token",
+	})
+	if err != nil {
+		t.Fatalf("ResetWorkspaceToken: %v", err)
+	}
+	if result.URL == "" || result.State != "ready" {
+		t.Fatalf("result = %#v", result)
+	}
+	assertCalls(t, fabricPort.calls, []string{"reset_token"})
+	if len(repository.tokenChanges) != 1 || repository.tokenChanges[0].Token != "new-token" {
+		t.Fatalf("token changes = %#v", repository.tokenChanges)
+	}
+}
+
 type recordingFabric struct {
 	calls []string
 
@@ -310,6 +358,7 @@ type recordingFabric struct {
 	destroyCompute fabric.DestroyComputeRequest
 	destroyStorage fabric.DestroyStorageRequest
 	destroyRoute   fabric.DestroyWorkspaceRouteRequest
+	resetToken     fabric.ResetWorkspaceTokenRequest
 
 	route fabric.RuntimeHandle
 
@@ -322,6 +371,9 @@ type recordingWorkspaceRepository struct {
 	createContext CreateContext
 	approvals     []ApprovalRequest
 	created       []CreatedWorkspace
+	runtime       RuntimeRecord
+	stateChanges  []StateChange
+	tokenChanges  []TokenChange
 }
 
 func (r *recordingWorkspaceRepository) PrepareCreate(ctx context.Context, request CreateWorkspaceRequest) (CreateContext, error) {
@@ -340,6 +392,24 @@ func (r *recordingWorkspaceRepository) SaveCreated(ctx context.Context, record C
 
 func (r *recordingWorkspaceRepository) Handoff(ctx context.Context, request HandoffRequest) (HandoffResult, error) {
 	return HandoffResult{WorkspaceID: request.WorkspaceID, URL: "https://workspace.example/" + request.WorkspaceID, State: "running"}, nil
+}
+
+func (r *recordingWorkspaceRepository) RuntimeForAction(ctx context.Context, request ActionRequest) (RuntimeRecord, error) {
+	return r.runtime, nil
+}
+
+func (r *recordingWorkspaceRepository) UpdateWorkspaceState(ctx context.Context, change StateChange) error {
+	r.stateChanges = append(r.stateChanges, change)
+	return nil
+}
+
+func (r *recordingWorkspaceRepository) ReplaceActiveToken(ctx context.Context, change TokenChange) error {
+	r.tokenChanges = append(r.tokenChanges, change)
+	return nil
+}
+
+func (r *recordingWorkspaceRepository) DeleteActiveToken(ctx context.Context, request ActionRequest) error {
+	return nil
 }
 
 type recordingLedger struct {
@@ -431,7 +501,9 @@ func (f *recordingFabric) DestroyWorkspaceRoute(ctx context.Context, request fab
 }
 
 func (f *recordingFabric) ResetWorkspaceToken(ctx context.Context, request fabric.ResetWorkspaceTokenRequest) (fabric.RuntimeHandle, error) {
-	return fabric.RuntimeHandle{}, nil
+	f.calls = append(f.calls, "reset_token")
+	f.resetToken = request
+	return fabric.RuntimeHandle{ProviderResourceID: "local-route/" + request.WorkspaceID, Status: "ready", URL: "https://workspace.example/" + request.WorkspaceID + "?token=" + request.Token}, nil
 }
 
 func (f *recordingFabric) DeleteWorkspaceToken(ctx context.Context, request fabric.DeleteWorkspaceTokenRequest) error {

@@ -118,6 +118,15 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload)
     }),
+  configureWorkspace: (id: string) => request<CreateWorkspaceResult>(`/api/workspaces/${id}/configure`, { method: "POST" }),
+  suspendWorkspace: (id: string) => request<CreateWorkspaceResult>(`/api/workspaces/${id}/suspend`, { method: "POST" }),
+  deleteWorkspace: (id: string) => request<CreateWorkspaceResult>(`/api/workspaces/${id}/delete`, { method: "POST" }),
+  resetWorkspaceToken: (id: string, token: string) =>
+    request<CreateWorkspaceResult>(`/api/workspaces/${id}/tokens/reset`, {
+      method: "POST",
+      body: JSON.stringify({ token })
+    }),
+  deleteWorkspaceToken: (id: string) => request<CreateWorkspaceResult>(`/api/workspaces/${id}/tokens/delete`, { method: "POST" }),
   wallet: () => request<WalletView>("/api/billing/wallet"),
   billingLedger: () => request<BillingLedgerEntry[]>("/api/billing/ledger"),
   supportTickets: () => request<SupportTicket[]>("/api/support/tickets"),

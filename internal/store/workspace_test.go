@@ -114,6 +114,42 @@ func TestWorkspaceStoreSaveCreatedPersistsFacadeState(t *testing.T) {
 	if handoff.URL != "https://workspace.example/"+workspaceID || handoff.State != "running" {
 		t.Fatalf("handoff = %#v", handoff)
 	}
+	runtime, err := store.RuntimeForAction(ctx, workspace.ActionRequest{WorkspaceID: workspaceID, ActorUserID: ownerID})
+	if err != nil {
+		t.Fatalf("RuntimeForAction: %v", err)
+	}
+	if runtime.ComputeID != "cmp-"+workspaceID || runtime.StorageID != "stg-"+workspaceID {
+		t.Fatalf("runtime = %#v", runtime)
+	}
+	if err := store.UpdateWorkspaceState(ctx, workspace.StateChange{WorkspaceID: workspaceID, ActorUserID: ownerID, State: "configured"}); err != nil {
+		t.Fatalf("UpdateWorkspaceState: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT state FROM workspaces WHERE id = $1`, workspaceID).Scan(&state); err != nil {
+		t.Fatalf("query configured workspace: %v", err)
+	}
+	if state != "configured" {
+		t.Fatalf("state = %q, want configured", state)
+	}
+	if err := store.ReplaceActiveToken(ctx, workspace.TokenChange{
+		WorkspaceID: workspaceID,
+		ActorUserID: ownerID,
+		Token:       "new-token",
+		URL:         "https://workspace.example/" + workspaceID + "?token=new-token",
+	}); err != nil {
+		t.Fatalf("ReplaceActiveToken: %v", err)
+	}
+	if _, err := store.Handoff(ctx, workspace.HandoffRequest{WorkspaceID: workspaceID, Token: "share-token"}); err == nil {
+		t.Fatal("Handoff succeeded with replaced old token")
+	}
+	if _, err := store.Handoff(ctx, workspace.HandoffRequest{WorkspaceID: workspaceID, Token: "new-token"}); err != nil {
+		t.Fatalf("Handoff new token: %v", err)
+	}
+	if err := store.DeleteActiveToken(ctx, workspace.ActionRequest{WorkspaceID: workspaceID, ActorUserID: ownerID}); err != nil {
+		t.Fatalf("DeleteActiveToken: %v", err)
+	}
+	if _, err := store.Handoff(ctx, workspace.HandoffRequest{WorkspaceID: workspaceID, Token: "new-token"}); err == nil {
+		t.Fatal("Handoff succeeded after token delete")
+	}
 }
 
 func insertWorkspaceOrg(ctx context.Context, t *testing.T, pool *pgxpool.Pool, orgID string, billingID string, ownerID string, balanceFen int64) {

@@ -219,4 +219,100 @@ func (s *WorkspaceStore) Handoff(ctx context.Context, request workspace.HandoffR
 	return result, nil
 }
 
+func (s *WorkspaceStore) RuntimeForAction(ctx context.Context, request workspace.ActionRequest) (workspace.RuntimeRecord, error) {
+	var record workspace.RuntimeRecord
+	err := s.pool.QueryRow(ctx, `
+		SELECT w.id, w.billing_account_id, COALESCE(w.compute_id, ''), COALESCE(w.storage_id, ''), w.state
+		FROM workspaces w
+		JOIN organizations o ON o.billing_account_id = w.billing_account_id
+		JOIN memberships m ON m.organization_id = o.id
+		WHERE w.id = $1
+		  AND m.user_id = $2
+		  AND m.status = 'active'
+		LIMIT 1
+	`, request.WorkspaceID, request.ActorUserID).Scan(
+		&record.WorkspaceID,
+		&record.BillingAccountID,
+		&record.ComputeID,
+		&record.StorageID,
+		&record.State,
+	)
+	if err != nil {
+		return workspace.RuntimeRecord{}, err
+	}
+	record.ActorUserID = request.ActorUserID
+	return record, nil
+}
+
+func (s *WorkspaceStore) UpdateWorkspaceState(ctx context.Context, change workspace.StateChange) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `
+		UPDATE workspaces
+		SET state = $1, updated_at = now()
+		WHERE id = $2
+	`, change.State, change.WorkspaceID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE managed_resource_views
+		SET status = $1, updated_at = now()
+		WHERE workspace_id = $2 AND resource_type = 'route'
+	`, change.State, change.WorkspaceID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *WorkspaceStore) ReplaceActiveToken(ctx context.Context, change workspace.TokenChange) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `
+		UPDATE workspace_tokens
+		SET status = 'deleted', updated_at = now()
+		WHERE workspace_id = $1 AND status = 'active'
+	`, change.WorkspaceID); err != nil {
+		return err
+	}
+	id, err := randomStoreID("token")
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO workspace_tokens (id, workspace_id, token_hash, status)
+		VALUES ($1, $2, $3, 'active')
+	`, id, change.WorkspaceID, auth.HashToken(change.Token)); err != nil {
+		return err
+	}
+	if change.URL != "" {
+		metadata, err := json.Marshal(map[string]string{"workspaceUrl": change.URL})
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `
+			UPDATE managed_resource_views
+			SET metadata = metadata || $1::jsonb, updated_at = now()
+			WHERE workspace_id = $2 AND resource_type = 'route'
+		`, metadata, change.WorkspaceID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *WorkspaceStore) DeleteActiveToken(ctx context.Context, request workspace.ActionRequest) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE workspace_tokens
+		SET status = 'deleted', updated_at = now()
+		WHERE workspace_id = $1 AND status = 'active'
+	`, request.WorkspaceID)
+	return err
+}
+
 var _ workspace.Repository = (*WorkspaceStore)(nil)

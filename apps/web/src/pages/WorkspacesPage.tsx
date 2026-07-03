@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Server } from "lucide-react";
+import { KeyRound, Pause, Plus, Server, Settings, Trash2 } from "lucide-react";
 import { api } from "../api/client";
 
 function randomToken() {
@@ -28,6 +28,19 @@ export function WorkspacesPage() {
       }),
     onSuccess: () => {
       setWorkspaceId(`ws-${Date.now().toString(36)}`);
+      void queryClient.invalidateQueries({ queryKey: ["workspaces"] });
+      void queryClient.invalidateQueries({ queryKey: ["billing-ledger"] });
+    }
+  });
+  const lifecycle = useMutation({
+    mutationFn: ({ id, action }: { id: string; action: "configure" | "suspend" | "delete" | "reset-token" | "delete-token" }) => {
+      if (action === "configure") return api.configureWorkspace(id);
+      if (action === "suspend") return api.suspendWorkspace(id);
+      if (action === "delete") return api.deleteWorkspace(id);
+      if (action === "reset-token") return api.resetWorkspaceToken(id, randomToken());
+      return api.deleteWorkspaceToken(id);
+    },
+    onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["workspaces"] });
       void queryClient.invalidateQueries({ queryKey: ["billing-ledger"] });
     }
@@ -87,11 +100,28 @@ export function WorkspacesPage() {
         <h2>Managed Workspace Views</h2>
         <div className="table">
           {(workspaces.data ?? []).map((workspace) => (
-            <div className="row" key={workspace.id}>
+            <div className="workspace-row" key={workspace.id}>
               <span>{workspace.name}</span>
               <span>{workspace.state}</span>
               <span>{workspace.policy}</span>
               <span>{workspace.url ? <a href={workspace.url}>{workspace.provider || "open"}</a> : workspace.provider || "console-facade"}</span>
+              <div className="button-row">
+                <button type="button" title="Configure" disabled={lifecycle.isPending} onClick={() => lifecycle.mutate({ id: workspace.id, action: "configure" })}>
+                  <Settings size={16} />
+                </button>
+                <button type="button" title="Suspend" disabled={lifecycle.isPending} onClick={() => lifecycle.mutate({ id: workspace.id, action: "suspend" })}>
+                  <Pause size={16} />
+                </button>
+                <button type="button" title="Reset token" disabled={lifecycle.isPending} onClick={() => lifecycle.mutate({ id: workspace.id, action: "reset-token" })}>
+                  <KeyRound size={16} />
+                </button>
+                <button type="button" title="Delete token" disabled={lifecycle.isPending} onClick={() => lifecycle.mutate({ id: workspace.id, action: "delete-token" })}>
+                  <KeyRound size={16} />
+                </button>
+                <button className="danger" type="button" title="Delete" disabled={lifecycle.isPending} onClick={() => lifecycle.mutate({ id: workspace.id, action: "delete" })}>
+                  <Trash2 size={16} />
+                </button>
+              </div>
             </div>
           ))}
           {workspaces.data?.length === 0 ? <p className="muted">No managed workspaces yet.</p> : null}

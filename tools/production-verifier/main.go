@@ -113,6 +113,7 @@ func verifyWorkspace(client *http.Client, origin string) createWorkspaceResult {
 	if handoff.URL == "" {
 		log.Fatalf("workspace handoff returned empty URL: %#v", handoff)
 	}
+	postJSON(client, origin+"/api/workspaces/"+workspaceID+"/delete", map[string]string{}, nil)
 	return handoff
 }
 
