@@ -22,6 +22,70 @@ export type ManagedWorkspace = {
   url?: string;
   provider?: string;
 };
+export type CreateWorkspacePayload = {
+  workspaceId: string;
+  name: string;
+  billingAccountId: string;
+  packageId: string;
+  token: string;
+};
+export type CreateWorkspaceResult = { workspaceId: string; url: string };
+export type WalletView = {
+  billingAccountId: string;
+  balanceFen: number;
+  frozenFen: number;
+  availableFen: number;
+};
+export type BillingLedgerEntry = {
+  id: string;
+  workspaceId?: string;
+  resourceType: string;
+  resourceId?: string;
+  amountFen: number;
+  kind: string;
+  description: string;
+  createdAt: string;
+};
+export type SupportTicket = {
+  id: string;
+  workspaceId?: string;
+  subject: string;
+  body?: string;
+  status: string;
+  createdAt?: string;
+};
+export type CreateSupportTicketPayload = {
+  workspaceId?: string;
+  subject: string;
+  body: string;
+};
+export type PolicyView = {
+  id: string;
+  organizationId: string;
+  name: string;
+  policyType: string;
+  status: string;
+  rules?: unknown;
+};
+export type CreatePolicyPayload = {
+  organizationId: string;
+  name: string;
+  policyType: string;
+  rules: unknown;
+};
+export type ApprovalView = {
+  id: string;
+  organizationId?: string;
+  policyId?: string;
+  requesterUserId?: string;
+  reviewerUserId?: string;
+  action?: string;
+  objectType?: string;
+  objectId?: string;
+  status: string;
+  reason?: string;
+  decisionNote?: string;
+};
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -49,5 +113,35 @@ export const api = {
   me: () => request<Me>("/api/me"),
   packages: () => request<WorkspacePackage[]>("/api/packages"),
   workspaces: () => request<ManagedWorkspace[]>("/api/workspaces"),
-  adminUsers: () => request<UserView[]>("/api/admin/users")
+  createWorkspace: (payload: CreateWorkspacePayload) =>
+    request<CreateWorkspaceResult>("/api/workspaces", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  wallet: () => request<WalletView>("/api/billing/wallet"),
+  billingLedger: () => request<BillingLedgerEntry[]>("/api/billing/ledger"),
+  supportTickets: () => request<SupportTicket[]>("/api/support/tickets"),
+  createSupportTicket: (payload: CreateSupportTicketPayload) =>
+    request<SupportTicket>("/api/support/tickets", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  adminUsers: () => request<UserView[]>("/api/admin/users"),
+  adminPolicies: () => request<PolicyView[]>("/api/admin/policies"),
+  createPolicy: (payload: CreatePolicyPayload) =>
+    request<PolicyView>("/api/admin/policies", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  adminApprovals: () => request<ApprovalView[]>("/api/admin/approvals"),
+  approveApproval: (id: string, decisionNote: string) =>
+    request<ApprovalView>(`/api/admin/approvals/${id}/approve`, {
+      method: "POST",
+      body: JSON.stringify({ decisionNote })
+    }),
+  rejectApproval: (id: string, decisionNote: string) =>
+    request<ApprovalView>(`/api/admin/approvals/${id}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ decisionNote })
+    })
 };

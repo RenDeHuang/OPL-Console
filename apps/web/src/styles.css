@@ -9,7 +9,9 @@ body {
 }
 
 input,
-button {
+button,
+select,
+textarea {
   font: inherit;
 }
 
@@ -30,10 +32,15 @@ button:disabled {
   cursor: not-allowed;
 }
 
+button.danger {
+  background: #9d2835;
+}
+
 .topbar {
-  height: 56px;
+  min-height: 56px;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 20px;
   padding: 0 32px;
   border-bottom: 1px solid #d9dee7;
@@ -77,10 +84,34 @@ button:disabled {
   margin-bottom: 14px;
 }
 
-.panel input {
+.panel input,
+.panel select,
+.panel textarea {
   border: 1px solid #c7ceda;
   border-radius: 6px;
   padding: 10px 12px;
+  background: #fff;
+  color: #172033;
+}
+
+.panel textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-items: end;
+}
+
+.form-grid label {
+  margin-bottom: 0;
+}
+
+.form-grid .wide {
+  grid-column: 1 / -1;
 }
 
 .page-header {
@@ -160,13 +191,41 @@ button:disabled {
   border-top: 0;
 }
 
+.row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.approval-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) 110px minmax(160px, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 0;
+  border-top: 1px solid #edf0f5;
+}
+
+.approval-row:first-child {
+  border-top: 0;
+}
+
+.approval-row p {
+  margin-top: 4px;
+}
+
+.button-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .error {
   color: #a71d2a;
 }
 
 @media (max-width: 760px) {
   .topbar {
-    padding: 0 16px;
+    padding: 12px 16px;
     gap: 12px;
   }
 
@@ -175,7 +234,9 @@ button:disabled {
   }
 
   .grid.three,
-  .row {
+  .row,
+  .form-grid,
+  .approval-row {
     grid-template-columns: 1fr;
   }
 
