@@ -122,7 +122,7 @@ async function postJSON<T>(path: string, body: Record<string, unknown>): Promise
 }
 
 export function loginOwner(credentials: { email: string; password: string }) {
-  return postJSON<AuthSession>("/api/auth/login", credentials).catch((error) => demoOwnerLogin(credentials, error));
+  return postJSON<AuthSession>("/api/auth/login", credentials).catch((error) => demoLogin(credentials, error));
 }
 
 export function loginOperator(credentials: { email: string; password: string; operatorToken: string }) {
@@ -133,9 +133,24 @@ export function logoutSession(csrfToken: string) {
   return postJSON<{ ok: boolean }>("/api/auth/logout", { csrfToken });
 }
 
-function demoOwnerLogin(credentials: { email: string; password: string }, error: unknown): AuthSession {
+function demoLogin(credentials: { email: string; password: string }, error: unknown): AuthSession {
   if (!isNetworkError(error)) throw error;
-  if (credentials.email !== "owner@opl.local" || credentials.password !== "password") {
+  if (credentials.password !== "password") {
+    throw new Error("invalid_credentials");
+  }
+  if (credentials.email === "admin@opl.local") {
+    return {
+      user: {
+        id: "user-demo-admin",
+        email: "admin@opl.local",
+        name: "OPL Admin",
+        role: "admin",
+        accountId: "acct-operator",
+      },
+      csrfToken: "csrf-demo-token",
+    };
+  }
+  if (credentials.email !== "owner@opl.local") {
     throw new Error("invalid_credentials");
   }
   return {

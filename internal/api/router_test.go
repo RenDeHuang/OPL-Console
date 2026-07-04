@@ -129,6 +129,30 @@ func TestOwnerLoginReturnsLabOwnerSession(t *testing.T) {
 	}
 }
 
+func TestAdminLoginReturnsAdminSession(t *testing.T) {
+	handler := NewRouter(Dependencies{})
+	request := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewBufferString(`{"email":"admin@opl.local","password":"password"}`))
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d", response.Code)
+	}
+	var payload struct {
+		User struct {
+			Email string `json:"email"`
+			Role  string `json:"role"`
+		} `json:"user"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode login: %v", err)
+	}
+	if payload.User.Email != "admin@opl.local" || payload.User.Role != "admin" {
+		t.Fatalf("user = %+v, want admin", payload.User)
+	}
+}
+
 func TestAdminOperatorLoginReturnsAdminSession(t *testing.T) {
 	handler := NewRouter(Dependencies{})
 	request := httptest.NewRequest(http.MethodPost, "/api/auth/operator-login", bytes.NewBufferString(`{"email":"admin@opl.local","password":"password","operatorToken":"operator-dev-token"}`))

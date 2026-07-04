@@ -1,8 +1,8 @@
-import type { ReactNode } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { useState } from "react";
 import { ArrowLeft, ArrowRight, Database, Headphones, KeyRound, LogIn, Server, ShieldCheck, WalletCards } from "lucide-react";
 import type { OplRoute } from "../routes/oplRoutes";
-import { loginOperator, loginOwner } from "../api/consoleApi";
+import { loginOwner } from "../api/consoleApi";
 
 export function HomePage() {
   const target = "/login";
@@ -75,11 +75,23 @@ export function HomePage() {
 export function LoginPage({ route }: { route?: OplRoute }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [operatorToken, setOperatorToken] = useState("operator-dev-token");
-  const [mode, setMode] = useState<"owner" | "admin">("owner");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const routeMode = route?.path || "/login";
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmitting(true);
+    setError("");
+    try {
+      const session = await loginOwner({ email, password });
+      window.location.href = session.user.role === "admin" ? "/admin/overview" : "/console/overview";
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "login_failed");
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   if (routeMode !== "/login" && routeMode !== "/logout") {
     return (
@@ -114,25 +126,7 @@ export function LoginPage({ route }: { route?: OplRoute }) {
             <h1>登录</h1>
           </div>
         </div>
-        <div className="authLinks">
-          <button className={mode === "owner" ? "primary" : ""} type="button" onClick={() => { setMode("owner"); setEmail("owner@opl.local"); }}>Lab Owner</button>
-          <button className={mode === "admin" ? "primary" : ""} type="button" onClick={() => { setMode("admin"); setEmail("admin@opl.local"); }}>Admin</button>
-        </div>
-        <form onSubmit={async (event) => {
-          event.preventDefault();
-          setSubmitting(true);
-          setError("");
-          try {
-            const session = mode === "admin"
-              ? await loginOperator({ email, password, operatorToken })
-              : await loginOwner({ email, password });
-            window.location.href = session.user.role === "admin" ? "/admin/overview" : "/console/overview";
-          } catch (err) {
-            setError(errorLabel(err instanceof Error ? err.message : "login_failed"));
-          } finally {
-            setSubmitting(false);
-          }
-        }}>
+        <form onSubmit={submit}>
           <label>
             邮箱
             <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="email" required />
@@ -141,22 +135,11 @@ export function LoginPage({ route }: { route?: OplRoute }) {
             密码
             <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="current-password" required />
           </label>
-          {mode === "admin" && (
-            <label>
-              Operator Token
-              <input value={operatorToken} onChange={(event) => setOperatorToken(event.target.value)} autoComplete="off" required />
-            </label>
-          )}
-          {error && <div className="error">{error}</div>}
+          {error && <div className="error">{errorLabel(error)}</div>}
           <button className="primary wide" disabled={submitting}>
             <LogIn size={16} /> {submitting ? "登录中..." : "登录"}
           </button>
         </form>
-        <div className="emptyState">
-          <strong>测试账号</strong>
-          <span>Lab Owner: owner@opl.local / password</span>
-          <span>Admin: admin@opl.local / password</span>
-        </div>
         <div className="securityNote">
           <ShieldCheck size={16} />
           <span>Secure cookie + CSRF</span>
@@ -170,7 +153,6 @@ function errorLabel(value: string) {
   const labels: Record<string, string> = {
     login_failed: "登录失败",
     invalid_credentials: "邮箱或密码不正确",
-    invalid_operator_credentials: "Admin 邮箱、密码或 Operator Token 不正确",
     request_failed: "请求失败",
   };
   return labels[value] || value;

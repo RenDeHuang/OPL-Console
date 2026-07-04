@@ -60,7 +60,24 @@ func NewRouter(deps Dependencies) http.Handler {
 		body := readBody(w, r)
 		email, _ := body["email"].(string)
 		password, _ := body["password"].(string)
-		if email != "owner@opl.local" || password != "password" {
+		if password != "password" {
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid_credentials"})
+			return
+		}
+		if email == "admin@opl.local" {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"user": map[string]any{
+					"id":        "user-demo-admin",
+					"email":     "admin@opl.local",
+					"name":      "OPL Admin",
+					"role":      "admin",
+					"accountId": "acct-operator",
+				},
+				"csrfToken": randomToken(),
+			})
+			return
+		}
+		if email != "owner@opl.local" {
 			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid_credentials"})
 			return
 		}
