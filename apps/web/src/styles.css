@@ -223,6 +223,64 @@ button.danger {
   overflow-wrap: anywhere;
 }
 
+.process-grid,
+.cost-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.process-grid div,
+.cost-strip {
+  border: 1px solid #edf0f5;
+  border-radius: 6px;
+  padding: 12px;
+  background: #f9fbff;
+}
+
+.process-grid div {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.cost-strip {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.danger-note {
+  grid-column: 1 / -1;
+  color: #9d2835;
+  margin: 0;
+}
+
+.ticket-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(120px, 1fr) 100px auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 0;
+  border-top: 1px solid #edf0f5;
+}
+
+.ticket-row:first-child {
+  border-top: 0;
+}
+
+.ticket-detail {
+  grid-column: 1 / -1;
+  border: 1px solid #edf0f5;
+  border-radius: 6px;
+  padding: 12px;
+  background: #f9fbff;
+}
+
+.ticket-detail p {
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+}
+
 .approval-row:first-child {
   border-top: 0;
 }
@@ -254,6 +312,9 @@ button.danger {
   .grid.three,
   .row,
   .form-grid,
+  .process-grid,
+  .cost-strip,
+  .ticket-row,
   .approval-row,
   .workspace-row {
     grid-template-columns: 1fr;

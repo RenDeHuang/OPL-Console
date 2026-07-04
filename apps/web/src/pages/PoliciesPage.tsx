@@ -2,13 +2,14 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { api } from "../api/client";
+import { policyTypeText, statusText } from "../format";
 
 export function PoliciesPage() {
   const queryClient = useQueryClient();
   const me = useQuery({ queryKey: ["me"], queryFn: api.me, retry: false });
   const policies = useQuery({ queryKey: ["admin-policies"], queryFn: api.adminPolicies, retry: false });
   const [organizationId, setOrganizationID] = useState("");
-  const [name, setName] = useState("Managed Workspace Approval");
+  const [name, setName] = useState("工作空间审批");
   const [policyType, setPolicyType] = useState("workspace_lifecycle");
   const [rules, setRules] = useState('{"requiresApproval":true}');
   const targetOrganizationID = organizationId || me.data?.organization.id || "";
@@ -23,13 +24,13 @@ export function PoliciesPage() {
     <main className="shell">
       <div className="page-header">
         <div>
-          <h1>Policies</h1>
-          <p>Admin policy definitions for managed resources and lifecycle gates.</p>
+          <h1>策略</h1>
+          <p>控制工作空间开通、配额和审批。</p>
         </div>
-        <span className="status ok">{policies.data?.length ?? 0} policies</span>
+        <span className="status ok">{policies.data?.length ?? 0} 条策略</span>
       </div>
       <section className="panel">
-        <h2>Create Policy</h2>
+        <h2>创建策略</h2>
         <form
           className="form-grid"
           onSubmit={(event) => {
@@ -38,40 +39,40 @@ export function PoliciesPage() {
           }}
         >
           <label>
-            Organization ID
+            组织 ID
             <input value={targetOrganizationID} onChange={(event) => setOrganizationID(event.target.value)} />
           </label>
           <label>
-            Name
+            名称
             <input value={name} onChange={(event) => setName(event.target.value)} />
           </label>
           <label>
-            Type
+            类型
             <input value={policyType} onChange={(event) => setPolicyType(event.target.value)} />
           </label>
           <label className="wide">
-            Rules JSON
+            规则
             <textarea value={rules} onChange={(event) => setRules(event.target.value)} />
           </label>
           <button type="submit" disabled={!targetOrganizationID || !name || !policyType || createPolicy.isPending}>
             <Plus size={16} />
-            {createPolicy.isPending ? "Creating" : "Create"}
+            {createPolicy.isPending ? "创建中" : "创建"}
           </button>
         </form>
-        {createPolicy.isError ? <p className="error">Policy create failed. Check JSON and admin session.</p> : null}
+        {createPolicy.isError ? <p className="error">创建失败，请检查规则、权限和登录状态。</p> : null}
       </section>
       <section className="panel">
-        <h2>Policy List</h2>
+        <h2>策略列表</h2>
         <div className="table">
           {(policies.data ?? []).map((policy) => (
             <div className="row" key={policy.id}>
               <span>{policy.name}</span>
-              <span>{policy.policyType}</span>
-              <span>{policy.status}</span>
+              <span>{policyTypeText(policy.policyType)}</span>
+              <span>{statusText(policy.status)}</span>
               <span>{policy.organizationId}</span>
             </div>
           ))}
-          {policies.data?.length === 0 ? <p className="muted">No policies configured.</p> : null}
+          {policies.data?.length === 0 ? <p className="muted">暂无策略。</p> : null}
         </div>
       </section>
     </main>

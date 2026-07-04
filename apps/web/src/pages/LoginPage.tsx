@@ -15,7 +15,7 @@ export function LoginPage() {
 
   return (
     <main className="shell narrow">
-      <h1>OPL Console</h1>
+      <h1>OPL 控制台</h1>
       <form
         className="panel"
         method="post"
@@ -23,20 +23,20 @@ export function LoginPage() {
           event.preventDefault();
           login.mutate();
         }}
-      >
+        >
         <label>
-          Email
+          邮箱
           <input type="email" name="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} />
         </label>
         <label>
-          Password
+          密码
           <input type="password" name="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} />
         </label>
         <button type="submit" disabled={login.isPending}>
           <LogIn size={16} />
-          {login.isPending ? "Signing in" : "Sign in"}
+          {login.isPending ? "登录中" : "登录"}
         </button>
-        {login.isError ? <p className="error">Login failed</p> : null}
+        {login.isError ? <p className="error">登录失败，请检查账号或密码。</p> : null}
       </form>
     </main>
   );

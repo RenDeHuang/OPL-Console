@@ -15,15 +15,15 @@ export function App() {
       <nav className="topbar">
         <NavLink to="/" end>
           <LayoutDashboard size={16} />
-          OPL Console
+          控制台
         </NavLink>
-        <NavLink to="/workspaces"><Server size={16} /> Workspaces</NavLink>
-        <NavLink to="/billing"><CreditCard size={16} /> Billing</NavLink>
-        <NavLink to="/support"><HelpCircle size={16} /> Support</NavLink>
-        <NavLink to="/login"><LockKeyhole size={16} /> Login</NavLink>
-        <NavLink to="/admin"><Shield size={16} /> Admin</NavLink>
-        <NavLink to="/admin/policies"><Stamp size={16} /> Policies</NavLink>
-        <NavLink to="/admin/approvals"><Shield size={16} /> Approvals</NavLink>
+        <NavLink to="/workspaces"><Server size={16} /> 工作空间</NavLink>
+        <NavLink to="/billing"><CreditCard size={16} /> 账单</NavLink>
+        <NavLink to="/support"><HelpCircle size={16} /> 工单</NavLink>
+        <NavLink to="/login"><LockKeyhole size={16} /> 登录</NavLink>
+        <NavLink to="/admin"><Shield size={16} /> 管理</NavLink>
+        <NavLink to="/admin/policies"><Stamp size={16} /> 策略</NavLink>
+        <NavLink to="/admin/approvals"><Shield size={16} /> 审批</NavLink>
       </nav>
       <Routes>
         <Route path="/" element={<OwnerOverviewPage />} />
