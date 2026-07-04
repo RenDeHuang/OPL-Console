@@ -21,20 +21,14 @@
     ]
   },
   "operations": [
-    "ListCatalog",
-    "RuntimeReadiness",
     "CreateCompute",
-    "StopCompute",
-    "RestartCompute",
-    "DestroyCompute",
     "CreateStorage",
     "AttachStorage",
-    "DetachStorage",
-    "DestroyStorage",
     "CreateWorkspaceRoute",
+    "DestroyCompute",
+    "DestroyStorage",
     "DestroyWorkspaceRoute",
     "ResetWorkspaceToken",
-    "DeleteWorkspaceToken",
-    "InspectRuntime"
+    "DeleteWorkspaceToken"
   ]
 }

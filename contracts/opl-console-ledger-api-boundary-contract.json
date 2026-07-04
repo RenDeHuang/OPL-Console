@@ -24,12 +24,6 @@
     "FreezeHold",
     "ReleaseHold",
     "DebitHold",
-    "RecordWalletTransaction",
-    "RecordManualTopUp",
-    "RecordBillingLedgerEntry",
-    "RecordAuditEvent",
-    "RecordReceipt",
-    "ListAccountLedger",
-    "ListAdminLedger"
+    "RecordManualTopUp"
   ]
 }

@@ -1,50 +1,97 @@
 {
   "schemaVersion": 1,
   "owner": "OPL Console",
-  "purpose": "Current public, owner, admin, and managed-workspace routes exposed by the OPL Console governance surface.",
+  "purpose": "Current UI routes and HTTP API routes owned by the OPL Console management and governance surface.",
+  "sourceOfTruth": {
+    "uiRoutes": "medopl-3/packages/console/ui/routes/opl-routes.js",
+    "apiRoutes": "medopl-3/packages/console/api/routes/index.js"
+  },
   "lifecycle": "current",
   "boundary": {
     "routeOwnership": "Console owns the governance API surface, not the underlying Workspace, Fabric, Ledger, Gateway, or usage-generation product domains.",
     "activationRule": "Routes apply to OPL Cloud-hosted or organization-managed resources. Unmanaged App, Workspace, Fabric, Ledger, MAS, SSH, HPC, or local flows do not enter Console by default."
   },
-  "routes": {
+  "uiRoutes": {
     "public": [
-      "GET /api/healthz",
-      "GET /api/runtime/readiness",
-      "GET /api/production/readiness",
-      "POST /api/auth/login",
-      "POST /api/auth/logout",
-      "GET /api/auth/session"
+      "/",
+      "/pricing",
+      "/docs",
+      "/status",
+      "/login",
+      "/logout"
     ],
-    "owner": [
-      "GET /api/me",
-      "GET /api/packages",
-      "GET /api/workspaces",
-      "POST /api/workspaces",
-      "GET /api/workspaces/{id}",
-      "POST /api/workspaces/{id}/stop",
-      "POST /api/workspaces/{id}/restart",
-      "POST /api/workspaces/{id}/destroy-compute",
-      "POST /api/workspaces/{id}/destroy-storage",
-      "POST /api/workspaces/{id}/tokens/reset",
-      "POST /api/workspaces/{id}/tokens/delete",
-      "GET /api/billing/wallet",
-      "GET /api/billing/ledger",
-      "GET /api/support/tickets",
-      "POST /api/support/tickets"
+    "ownerConsole": [
+      "/console",
+      "/console/overview",
+      "/console/compute",
+      "/console/compute/new",
+      "/console/compute/:id",
+      "/console/storage",
+      "/console/storage/new",
+      "/console/storage/:id",
+      "/console/attachments",
+      "/console/attachments/new",
+      "/console/attachments/:id",
+      "/console/workspaces",
+      "/console/workspaces/new",
+      "/console/workspaces/:id",
+      "/console/gateway",
+      "/console/billing",
+      "/console/billing/wallet",
+      "/console/account",
+      "/console/support",
+      "/console/support/new",
+      "/console/support/:id",
+      "/console/alerts"
     ],
-    "admin": [
-      "GET /api/admin/users",
-      "GET /api/admin/workspaces",
-      "GET /api/admin/runtime",
-      "GET /api/admin/fabric/catalog",
-      "GET /api/admin/ledger",
-      "GET /api/admin/audit",
-      "POST /api/admin/users/{id}/topups",
-      "GET /api/admin/support/tickets"
+    "adminConsole": [
+      "/admin",
+      "/admin/overview",
+      "/admin/users",
+      "/admin/billing",
+      "/admin/ledger",
+      "/admin/runtime",
+      "/admin/support"
     ],
-    "workspace": [
-      "GET /w/{workspaceId}?token=..."
+    "error": [
+      "/403",
+      "/404",
+      "/500"
     ]
-  }
+  },
+  "apiRoutes": [
+    "GET /api/healthz",
+    "POST /api/auth/login",
+    "POST /api/auth/operator-login",
+    "POST /api/auth/logout",
+    "GET /api/auth/me",
+    "GET /api/state",
+    "GET /api/operator/summary",
+    "GET /api/management/state",
+    "POST /api/billing/topups",
+    "POST /api/organizations",
+    "POST /api/users",
+    "POST /api/organizations/members",
+    "GET /api/compute-pools",
+    "GET /api/compute-allocations",
+    "GET /api/compute-allocations/:id",
+    "POST /api/compute-allocations",
+    "POST /api/compute-allocations/:id/destroy",
+    "POST /api/storage-volumes",
+    "POST /api/storage-volumes/destroy",
+    "POST /api/storage-attachments",
+    "POST /api/storage-attachments/detach",
+    "POST /api/workspaces",
+    "POST /api/workspaces/reset-token",
+    "POST /api/workspaces/delete-token",
+    "POST /api/billing/request-usage",
+    "POST /api/billing/reconciliation",
+    "GET /api/ledger/task-receipts",
+    "POST /api/ledger/task-receipts",
+    "GET /api/runtime/readiness",
+    "GET /api/production/readiness",
+    "POST /api/workspaces/runtime-status",
+    "GET /api/support/tickets",
+    "POST /api/support/tickets"
+  ]
 }
