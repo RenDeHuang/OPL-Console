@@ -14,7 +14,6 @@ const defaultSessionCookieName = "opl_console_session"
 
 type AuthService interface {
 	Login(ctx context.Context, email string, password string) (auth.Session, error)
-	OperatorLogin(ctx context.Context) (auth.Session, error)
 	Session(ctx context.Context, token string) (auth.Session, error)
 	Logout(ctx context.Context, token string) error
 }
@@ -22,10 +21,6 @@ type AuthService interface {
 type authRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
-}
-
-type operatorAuthRequest struct {
-	OperatorToken string `json:"operatorToken"`
 }
 
 type authResponse struct {
@@ -63,34 +58,7 @@ func mountAuthRoutes(router Router, deps Dependencies) {
 		writeAuthResponse(w, session)
 	})
 
-	router.Post("/api/auth/operator-login", func(w http.ResponseWriter, r *http.Request) {
-		if deps.Auth == nil {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "auth_not_configured"})
-			return
-		}
-		var payload operatorAuthRequest
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_json"})
-			return
-		}
-		if deps.OperatorSummaryToken == "" {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "operator_token_not_configured"})
-			return
-		}
-		if payload.OperatorToken == "" || payload.OperatorToken != deps.OperatorSummaryToken {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "operator_token_invalid"})
-			return
-		}
-		session, err := deps.Auth.OperatorLogin(r.Context())
-		if err != nil {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "operator_admin_user_required"})
-			return
-		}
-		setSessionCookie(w, cookieName, session.Token, session.ExpiresAt)
-		writeAuthResponse(w, session)
-	})
-
-	router.Get("/api/auth/me", func(w http.ResponseWriter, r *http.Request) {
+	router.Get("/api/auth/session", func(w http.ResponseWriter, r *http.Request) {
 		if deps.Auth == nil {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "not_authenticated"})
 			return

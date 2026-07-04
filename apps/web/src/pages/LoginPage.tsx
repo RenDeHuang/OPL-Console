@@ -9,7 +9,7 @@ export function LoginPage() {
   const login = useMutation({
     mutationFn: () => api.login(email, password),
     onSuccess: () => {
-      window.location.href = "/console/overview";
+      window.location.href = "/";
     }
   });
 

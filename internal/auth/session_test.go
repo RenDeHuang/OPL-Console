@@ -22,16 +22,6 @@ func (f fakeUserRepository) FindUserByEmail(ctx context.Context, email string) (
 	return f.user, nil
 }
 
-func (f fakeUserRepository) FindFirstAdmin(ctx context.Context) (UserWithPassword, error) {
-	if f.err != nil {
-		return UserWithPassword{}, f.err
-	}
-	if f.user.Role != RoleAdmin || f.user.Status != StatusActive {
-		return UserWithPassword{}, ErrInvalidCredentials
-	}
-	return f.user, nil
-}
-
 type fakeSessionRepository struct {
 	createdSession SessionRecord
 	lookupSession  Session

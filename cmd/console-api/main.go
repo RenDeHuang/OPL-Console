@@ -43,7 +43,6 @@ func main() {
 		Sessions: authStore,
 	})
 	governanceService := console.NewService(store.NewGovernanceStore(pool))
-	ledgerPort := ledgerpostgres.New(pool)
 	fabricPort, err := buildFabricPort(cfg)
 	if err != nil {
 		log.Fatal(err)
@@ -51,17 +50,14 @@ func main() {
 	workspaceService := workspace.NewService(
 		fabricPort,
 		workspace.WithRepository(store.NewWorkspaceStore(pool)),
-		workspace.WithLedger(ledgerPort),
+		workspace.WithLedger(ledgerpostgres.New(pool)),
 	)
 
 	router := api.NewRouter(api.Dependencies{
-		Auth:                 authService,
-		Governance:           governanceService,
-		Workspace:            workspaceService,
-		Fabric:               fabricPort,
-		Ledger:               ledgerPort,
-		SessionCookieName:    cfg.SessionCookieName,
-		OperatorSummaryToken: cfg.OperatorSummaryToken,
+		Auth:              authService,
+		Governance:        governanceService,
+		Workspace:         workspaceService,
+		SessionCookieName: cfg.SessionCookieName,
 		RuntimeReady: func() api.Readiness {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			defer cancel()

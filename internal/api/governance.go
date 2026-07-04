@@ -7,6 +7,7 @@ import (
 
 	"github.com/RenDeHuang/opl-console/internal/auth"
 	"github.com/RenDeHuang/opl-console/internal/console"
+	"github.com/go-chi/chi/v5"
 )
 
 type GovernanceService interface {
@@ -29,74 +30,101 @@ type GovernanceService interface {
 }
 
 func mountGovernanceRoutes(router Router, deps Dependencies) {
-	router.Get("/api/state", func(w http.ResponseWriter, r *http.Request) {
+	router.Get("/api/me", func(w http.ResponseWriter, r *http.Request) {
 		session, ok := requireOwner(w, r, deps)
 		if !ok {
 			return
 		}
-		result, err := ownerState(r.Context(), governanceService(deps), session.User)
+		result, err := governanceService(deps).Me(r.Context(), session.User)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "state_read_failed"})
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read_model_failed"})
 			return
 		}
 		writeJSON(w, http.StatusOK, result)
 	})
 
-	router.Get("/api/operator/summary", func(w http.ResponseWriter, r *http.Request) {
-		if !authorizedOperator(r, deps) {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "operator_summary_token_invalid"})
+	router.Get("/api/packages", func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := requireOwner(w, r, deps); !ok {
 			return
 		}
-		service := governanceService(deps)
-		users, err := service.AdminUsers(r.Context())
+		result, err := governanceService(deps).Packages(r.Context())
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "operator_summary_failed"})
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read_model_failed"})
 			return
 		}
-		resources, err := service.AdminManagedResources(r.Context())
+		writeJSON(w, http.StatusOK, result)
+	})
+
+	router.Get("/api/workspaces", func(w http.ResponseWriter, r *http.Request) {
+		session, ok := requireOwner(w, r, deps)
+		if !ok {
+			return
+		}
+		result, err := governanceService(deps).Workspaces(r.Context(), session.User)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "operator_summary_failed"})
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read_model_failed"})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"users":               len(users),
-			"managedResources":    len(resources),
-			"runtimeReadiness":    readinessOrDefault(deps.RuntimeReady),
-			"productionReadiness": readinessOrDefault(deps.ProductionReady),
+		writeJSON(w, http.StatusOK, result)
+	})
+
+	router.Get("/api/admin/users", func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := requireAdmin(w, r, deps); !ok {
+			return
+		}
+		result, err := governanceService(deps).AdminUsers(r.Context())
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read_model_failed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
+	})
+
+	router.Get("/api/admin/organizations", func(w http.ResponseWriter, r *http.Request) {
+		adminReadModel(w, r, deps, func(ctx context.Context, service GovernanceService) (any, error) {
+			return service.AdminOrganizations(ctx)
+		})
+	})
+	router.Get("/api/admin/teams", func(w http.ResponseWriter, r *http.Request) {
+		adminReadModel(w, r, deps, func(ctx context.Context, service GovernanceService) (any, error) {
+			return service.AdminTeams(ctx)
+		})
+	})
+	router.Get("/api/admin/roles", func(w http.ResponseWriter, r *http.Request) {
+		adminReadModel(w, r, deps, func(ctx context.Context, service GovernanceService) (any, error) {
+			return service.AdminRoles(ctx)
+		})
+	})
+	router.Get("/api/admin/resources", func(w http.ResponseWriter, r *http.Request) {
+		adminReadModel(w, r, deps, func(ctx context.Context, service GovernanceService) (any, error) {
+			return service.AdminManagedResources(ctx)
 		})
 	})
 
-	router.Get("/api/management/state", func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := requireAdmin(w, r, deps); !ok {
+	router.Get("/api/billing/wallet", func(w http.ResponseWriter, r *http.Request) {
+		session, ok := requireOwner(w, r, deps)
+		if !ok {
 			return
 		}
-		result, err := managementState(r.Context(), governanceService(deps))
+		result, err := governanceService(deps).Wallet(r.Context(), session.User)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "management_state_failed"})
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read_model_failed"})
 			return
 		}
 		writeJSON(w, http.StatusOK, result)
 	})
 
-	router.Post("/api/organizations", func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := requireAdmin(w, r, deps); !ok {
+	router.Get("/api/billing/ledger", func(w http.ResponseWriter, r *http.Request) {
+		session, ok := requireOwner(w, r, deps)
+		if !ok {
 			return
 		}
-		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "organization_create_not_implemented"})
-	})
-
-	router.Post("/api/users", func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := requireAdmin(w, r, deps); !ok {
+		result, err := governanceService(deps).BillingLedger(r.Context(), session.User)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read_model_failed"})
 			return
 		}
-		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "user_create_not_implemented"})
-	})
-
-	router.Post("/api/organizations/members", func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := requireAdmin(w, r, deps); !ok {
-			return
-		}
-		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "organization_member_create_not_implemented"})
+		writeJSON(w, http.StatusOK, result)
 	})
 
 	router.Get("/api/support/tickets", func(w http.ResponseWriter, r *http.Request) {
@@ -109,7 +137,7 @@ func mountGovernanceRoutes(router Router, deps Dependencies) {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read_model_failed"})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"tickets": result})
+		writeJSON(w, http.StatusOK, result)
 	})
 
 	router.Post("/api/support/tickets", func(w http.ResponseWriter, r *http.Request) {
@@ -129,102 +157,87 @@ func mountGovernanceRoutes(router Router, deps Dependencies) {
 		}
 		writeJSON(w, http.StatusCreated, result)
 	})
+
+	router.Get("/api/admin/policies", func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := requireAdmin(w, r, deps); !ok {
+			return
+		}
+		result, err := governanceService(deps).AdminPolicies(r.Context())
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read_model_failed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
+	})
+
+	router.Post("/api/admin/policies", func(w http.ResponseWriter, r *http.Request) {
+		session, ok := requireAdmin(w, r, deps)
+		if !ok {
+			return
+		}
+		var payload console.CreatePolicyRequest
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_json"})
+			return
+		}
+		result, err := governanceService(deps).CreatePolicy(r.Context(), session.User, payload)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "policy_create_failed"})
+			return
+		}
+		writeJSON(w, http.StatusCreated, result)
+	})
+
+	router.Get("/api/admin/approvals", func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := requireAdmin(w, r, deps); !ok {
+			return
+		}
+		result, err := governanceService(deps).AdminApprovals(r.Context())
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read_model_failed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
+	})
+
+	router.Post("/api/admin/approvals/{id}/approve", func(w http.ResponseWriter, r *http.Request) {
+		decideApproval(w, r, deps, "approved")
+	})
+	router.Post("/api/admin/approvals/{id}/reject", func(w http.ResponseWriter, r *http.Request) {
+		decideApproval(w, r, deps, "rejected")
+	})
 }
 
-func ownerState(ctx context.Context, service GovernanceService, user auth.User) (map[string]any, error) {
-	me, err := service.Me(ctx, user)
-	if err != nil {
-		return nil, err
+func decideApproval(w http.ResponseWriter, r *http.Request, deps Dependencies, decision string) {
+	session, ok := requireAdmin(w, r, deps)
+	if !ok {
+		return
 	}
-	packages, err := service.Packages(ctx)
-	if err != nil {
-		return nil, err
+	var payload console.ApprovalDecisionRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_json"})
+		return
 	}
-	workspaces, err := service.Workspaces(ctx, user)
+	payload.ApprovalID = chi.URLParam(r, "id")
+	payload.Decision = decision
+	result, err := governanceService(deps).DecideApproval(r.Context(), session.User, payload)
 	if err != nil {
-		return nil, err
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "approval_decision_failed"})
+		return
 	}
-	wallet, err := service.Wallet(ctx, user)
-	if err != nil {
-		return nil, err
-	}
-	ledger, err := service.BillingLedger(ctx, user)
-	if err != nil {
-		return nil, err
-	}
-	tickets, err := service.SupportTickets(ctx, user)
-	if err != nil {
-		return nil, err
-	}
-	return map[string]any{
-		"me":         me,
-		"packages":   packages,
-		"workspaces": workspaces,
-		"wallet":     wallet,
-		"ledger":     ledger,
-		"tickets":    tickets,
-	}, nil
+	writeJSON(w, http.StatusOK, result)
 }
 
-func managementState(ctx context.Context, service GovernanceService) (map[string]any, error) {
-	users, err := service.AdminUsers(ctx)
+func adminReadModel(w http.ResponseWriter, r *http.Request, deps Dependencies, read func(context.Context, GovernanceService) (any, error)) {
+	if _, ok := requireAdmin(w, r, deps); !ok {
+		return
+	}
+	result, err := read(r.Context(), governanceService(deps))
 	if err != nil {
-		return nil, err
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read_model_failed"})
+		return
 	}
-	organizations, err := service.AdminOrganizations(ctx)
-	if err != nil {
-		return nil, err
-	}
-	teams, err := service.AdminTeams(ctx)
-	if err != nil {
-		return nil, err
-	}
-	roles, err := service.AdminRoles(ctx)
-	if err != nil {
-		return nil, err
-	}
-	resources, err := service.AdminManagedResources(ctx)
-	if err != nil {
-		return nil, err
-	}
-	policies, err := service.AdminPolicies(ctx)
-	if err != nil {
-		return nil, err
-	}
-	approvals, err := service.AdminApprovals(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return map[string]any{
-		"users":         users,
-		"organizations": organizations,
-		"teams":         teams,
-		"roles":         roles,
-		"resources":     resources,
-		"policies":      policies,
-		"approvals":     approvals,
-	}, nil
-}
-
-func readinessOrDefault(check func() Readiness) Readiness {
-	if check == nil {
-		return Readiness{Ready: false, Checks: map[string]bool{"configured": false}}
-	}
-	return check()
-}
-
-func authorizedOperator(r *http.Request, deps Dependencies) bool {
-	if session, ok := optionalSession(r, deps); ok && auth.CanAccessAdmin(session.User) {
-		return true
-	}
-	if deps.OperatorSummaryToken == "" {
-		return false
-	}
-	token := r.Header.Get("x-opl-operator-token")
-	if token == "" {
-		token = r.URL.Query().Get("operatorToken")
-	}
-	return token != "" && token == deps.OperatorSummaryToken
+	writeJSON(w, http.StatusOK, result)
 }
 
 func requireOwner(w http.ResponseWriter, r *http.Request, deps Dependencies) (auth.Session, bool) {
@@ -293,25 +306,6 @@ func sessionFromRequest(w http.ResponseWriter, r *http.Request, deps Dependencie
 	session, err := deps.Auth.Session(r.Context(), cookie.Value)
 	if err != nil {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "not_authenticated"})
-		return auth.Session{}, false
-	}
-	return session, true
-}
-
-func optionalSession(r *http.Request, deps Dependencies) (auth.Session, bool) {
-	if deps.Auth == nil {
-		return auth.Session{}, false
-	}
-	cookieName := deps.SessionCookieName
-	if cookieName == "" {
-		cookieName = defaultSessionCookieName
-	}
-	cookie, err := r.Cookie(cookieName)
-	if err != nil || cookie.Value == "" {
-		return auth.Session{}, false
-	}
-	session, err := deps.Auth.Session(r.Context(), cookie.Value)
-	if err != nil {
 		return auth.Session{}, false
 	}
 	return session, true

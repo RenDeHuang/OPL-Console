@@ -14,13 +14,11 @@ import (
 )
 
 type fakeAuthService struct {
-	loginSession    auth.Session
-	operatorSession auth.Session
-	session         auth.Session
-	loginErr        error
-	operatorErr     error
-	sessionErr      error
-	logoutToken     string
+	loginSession auth.Session
+	session      auth.Session
+	loginErr     error
+	sessionErr   error
+	logoutToken  string
 }
 
 func (f *fakeAuthService) Login(ctx context.Context, email string, password string) (auth.Session, error) {
@@ -28,13 +26,6 @@ func (f *fakeAuthService) Login(ctx context.Context, email string, password stri
 		return auth.Session{}, f.loginErr
 	}
 	return f.loginSession, nil
-}
-
-func (f *fakeAuthService) OperatorLogin(ctx context.Context) (auth.Session, error) {
-	if f.operatorErr != nil {
-		return auth.Session{}, f.operatorErr
-	}
-	return f.operatorSession, nil
 }
 
 func (f *fakeAuthService) Session(ctx context.Context, token string) (auth.Session, error) {
@@ -112,7 +103,7 @@ func TestAuthLoginRejectsInvalidCredentials(t *testing.T) {
 	}
 }
 
-func TestAuthMeReadsSessionCookie(t *testing.T) {
+func TestAuthSessionReadsSessionCookie(t *testing.T) {
 	service := &fakeAuthService{session: auth.Session{
 		Token:     "session-token",
 		CSRFToken: "csrf-token",
@@ -125,7 +116,7 @@ func TestAuthMeReadsSessionCookie(t *testing.T) {
 		},
 	}}
 	handler := NewRouter(Dependencies{Auth: service, SessionCookieName: "opl_session"})
-	request := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/auth/session", nil)
 	request.AddCookie(&http.Cookie{Name: "opl_session", Value: "session-token"})
 	response := httptest.NewRecorder()
 
@@ -143,7 +134,7 @@ func TestAuthMeReadsSessionCookie(t *testing.T) {
 	}
 }
 
-func TestAuthMeRejectsMissingOrUnknownCookie(t *testing.T) {
+func TestAuthSessionRejectsMissingOrUnknownCookie(t *testing.T) {
 	tests := []struct {
 		name    string
 		cookie  *http.Cookie
@@ -164,7 +155,7 @@ func TestAuthMeRejectsMissingOrUnknownCookie(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			handler := NewRouter(Dependencies{Auth: tt.service, SessionCookieName: "opl_session"})
-			request := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
+			request := httptest.NewRequest(http.MethodGet, "/api/auth/session", nil)
 			if tt.cookie != nil {
 				request.AddCookie(tt.cookie)
 			}
@@ -176,35 +167,6 @@ func TestAuthMeRejectsMissingOrUnknownCookie(t *testing.T) {
 				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 			}
 		})
-	}
-}
-
-func TestOperatorLoginRequiresConfiguredTokenAndCreatesAdminSession(t *testing.T) {
-	service := &fakeAuthService{operatorSession: auth.Session{
-		Token:     "operator-session",
-		CSRFToken: "operator-csrf",
-		ExpiresAt: time.Now().Add(time.Hour),
-		User:      auth.User{ID: "usr-admin", Email: "admin@opl.local", Role: auth.RoleAdmin, Status: auth.StatusActive},
-	}}
-	handler := NewRouter(Dependencies{
-		Auth:                 service,
-		SessionCookieName:    "opl_session",
-		OperatorSummaryToken: "operator-secret",
-	})
-	request := httptest.NewRequest(http.MethodPost, "/api/auth/operator-login", bytes.NewBufferString(`{"operatorToken":"operator-secret"}`))
-	response := httptest.NewRecorder()
-
-	handler.ServeHTTP(response, request)
-
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-	}
-	var payload authResponse
-	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if payload.User.Role != auth.RoleAdmin || payload.CSRFToken != "operator-csrf" {
-		t.Fatalf("payload = %#v", payload)
 	}
 }
 
