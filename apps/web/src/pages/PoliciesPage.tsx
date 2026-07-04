@@ -39,7 +39,7 @@ export function PoliciesPage() {
           }}
         >
           <label>
-            组织 ID
+            组织编号
             <input value={targetOrganizationID} onChange={(event) => setOrganizationID(event.target.value)} />
           </label>
           <label>

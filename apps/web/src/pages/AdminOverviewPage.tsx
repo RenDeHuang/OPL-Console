@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ShieldCheck, Users } from "lucide-react";
 import { api } from "../api/client";
-import { resourceText, scopeText, statusText } from "../format";
+import { providerText, resourceText, scopeText, statusText } from "../format";
 
 export function AdminOverviewPage() {
   const users = useQuery({ queryKey: ["admin-users"], queryFn: api.adminUsers, retry: false });
@@ -94,7 +94,7 @@ export function AdminOverviewPage() {
               <span>{resource.displayName}</span>
               <span>{resourceText(resource.resourceType)}</span>
               <span>{statusText(resource.status)}</span>
-              <span>{resource.provider}</span>
+              <span>{providerText(resource.provider)}</span>
             </div>
           ))}
         </div>

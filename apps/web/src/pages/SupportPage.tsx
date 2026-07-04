@@ -39,7 +39,7 @@ export function SupportPage() {
           }}
         >
           <label>
-            工作空间 ID
+            工作空间编号
             <input value={workspaceId} onChange={(event) => setWorkspaceId(event.target.value)} placeholder="可选" />
           </label>
           <label>

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { HardDrive, KeyRound, Pause, Plus, Route, Server, Settings, Trash2 } from "lucide-react";
 import { api } from "../api/client";
-import { fen, packageText, statusText } from "../format";
+import { fen, packageText, providerText, statusText } from "../format";
 
 function randomToken() {
   return `opl-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
@@ -76,7 +76,7 @@ export function WorkspacesPage() {
           }}
         >
           <label>
-            工作空间 ID
+            工作空间编号
             <input value={workspaceId} onChange={(event) => setWorkspaceId(event.target.value)} />
           </label>
           <label>
@@ -124,7 +124,7 @@ export function WorkspacesPage() {
               <span>{workspace.name}</span>
               <span>{statusText(workspace.state)}</span>
               <span>{statusText(workspace.policy)}</span>
-              <span>{workspace.url ? <a href={workspace.url}>打开</a> : workspace.provider ? "运行时已登记" : "待生成"}</span>
+              <span>{workspace.url ? <a href={workspace.url}>打开</a> : workspace.provider ? providerText(workspace.provider) : "待生成"}</span>
               <div className="button-row">
                 <button type="button" title="配置" disabled={lifecycle.isPending} onClick={() => lifecycle.mutate({ id: workspace.id, action: "configure" })}>
                   <Settings size={16} />

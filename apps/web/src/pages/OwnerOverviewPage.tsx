@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Box, Database, Server } from "lucide-react";
 import { api } from "../api/client";
-import { packageText, statusText } from "../format";
+import { packageText, providerText, statusText } from "../format";
 
 export function OwnerOverviewPage() {
   const me = useQuery({ queryKey: ["me"], queryFn: api.me, retry: false });
@@ -65,7 +65,7 @@ export function OwnerOverviewPage() {
               <span>{workspace.name}</span>
               <span>{statusText(workspace.state)}</span>
               <span>{statusText(workspace.policy)}</span>
-              <span>{workspace.provider || "控制台托管"}</span>
+              <span>{providerText(workspace.provider)}</span>
             </div>
           ))}
           {workspaces.data?.length === 0 ? <p className="muted">暂无托管工作空间。</p> : null}

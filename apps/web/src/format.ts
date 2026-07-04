@@ -71,6 +71,16 @@ export function scopeText(value?: string) {
   return labels[value ?? ""] ?? value ?? "";
 }
 
+export function providerText(value?: string) {
+  const labels: Record<string, string> = {
+    local: "本地运行",
+    mock: "模拟运行",
+    tke: "腾讯云 TKE",
+    "tencent-tke": "腾讯云 TKE"
+  };
+  return labels[value ?? ""] ?? value ?? "控制台托管";
+}
+
 export function actionText(value?: string) {
   const labels: Record<string, string> = {
     "workspace.create": "开通工作空间",
