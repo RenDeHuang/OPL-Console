@@ -24,6 +24,8 @@
       "StorageAttachment",
       "Workspace",
       "WorkspaceToken",
+      "WorkspaceLifecycleStep",
+      "WorkspaceBackup",
       "RuntimeOperation",
       "AuditEvent",
       "Receipt"
@@ -52,6 +54,8 @@
     "StorageAttachment",
     "Workspace",
     "WorkspaceToken",
+    "WorkspaceLifecycleStep",
+    "WorkspaceBackup",
     "RuntimeOperation",
     "SupportTicket",
     "AuditEvent",

@@ -96,10 +96,13 @@ func (s *WorkspaceStore) CreateApproval(ctx context.Context, request workspace.A
 	if err != nil {
 		return "", err
 	}
+	if len(request.Context) == 0 {
+		request.Context = []byte(`{}`)
+	}
 	_, err = s.pool.Exec(ctx, `
-		INSERT INTO approvals (id, organization_id, policy_id, requester_user_id, action, object_type, object_id, status, reason)
-		VALUES ($1, $2, NULLIF($3, ''), $4, $5, $6, $7, 'pending', $8)
-	`, id, request.OrganizationID, request.PolicyID, request.RequesterUserID, request.Action, request.ObjectType, request.ObjectID, request.Reason)
+		INSERT INTO approvals (id, organization_id, policy_id, requester_user_id, action, object_type, object_id, status, reason, context)
+		VALUES ($1, $2, NULLIF($3, ''), $4, $5, $6, $7, 'pending', $8, $9)
+	`, id, request.OrganizationID, request.PolicyID, request.RequesterUserID, request.Action, request.ObjectType, request.ObjectID, request.Reason, request.Context)
 	if err != nil {
 		return "", err
 	}
@@ -191,6 +194,25 @@ func (s *WorkspaceStore) SaveCreated(ctx context.Context, record workspace.Creat
 			return err
 		}
 	}
+	for _, step := range record.LifecycleSteps {
+		if step.WorkspaceID == "" {
+			step.WorkspaceID = record.WorkspaceID
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO workspace_lifecycle_steps
+			  (id, workspace_id, step_name, desired_state, actual_state, provider_resource_id, error_code, last_checked_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+			ON CONFLICT (workspace_id, step_name)
+			DO UPDATE SET desired_state = EXCLUDED.desired_state,
+			              actual_state = EXCLUDED.actual_state,
+			              provider_resource_id = EXCLUDED.provider_resource_id,
+			              error_code = EXCLUDED.error_code,
+			              last_checked_at = now(),
+			              updated_at = now()
+		`, stepID(step.WorkspaceID, step.StepName), step.WorkspaceID, step.StepName, step.DesiredState, step.ActualState, step.ProviderResourceID, step.ErrorCode); err != nil {
+			return err
+		}
+	}
 	if record.RouteURL == "" {
 		return fmt.Errorf("workspace route URL is required")
 	}
@@ -207,7 +229,7 @@ func (s *WorkspaceStore) Handoff(ctx context.Context, request workspace.HandoffR
 		WHERE w.id = $1
 		  AND t.token_hash = $2
 		  AND t.status = 'active'
-		  AND w.state IN ('running', 'configured')
+		  AND w.state IN ('running', 'stopped_server_disk_retained', 'server_destroyed_disk_retained')
 		LIMIT 1
 	`, request.WorkspaceID, auth.HashToken(request.Token)).Scan(&result.WorkspaceID, &result.State, &result.URL)
 	if err != nil {
@@ -222,7 +244,7 @@ func (s *WorkspaceStore) Handoff(ctx context.Context, request workspace.HandoffR
 func (s *WorkspaceStore) RuntimeForAction(ctx context.Context, request workspace.ActionRequest) (workspace.RuntimeRecord, error) {
 	var record workspace.RuntimeRecord
 	err := s.pool.QueryRow(ctx, `
-		SELECT w.id, w.billing_account_id, COALESCE(w.compute_id, ''), COALESCE(w.storage_id, ''), w.state
+		SELECT w.id, w.billing_account_id, COALESCE(w.compute_id, ''), COALESCE(w.storage_id, ''), COALESCE(w.attachment_id, ''), w.state
 		FROM workspaces w
 		JOIN organizations o ON o.billing_account_id = w.billing_account_id
 		JOIN memberships m ON m.organization_id = o.id
@@ -235,6 +257,7 @@ func (s *WorkspaceStore) RuntimeForAction(ctx context.Context, request workspace
 		&record.BillingAccountID,
 		&record.ComputeID,
 		&record.StorageID,
+		&record.AttachmentID,
 		&record.State,
 	)
 	if err != nil {
@@ -265,6 +288,82 @@ func (s *WorkspaceStore) UpdateWorkspaceState(ctx context.Context, change worksp
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+func (s *WorkspaceStore) UpdateResourceState(ctx context.Context, change workspace.ResourceStateChange) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	switch change.ResourceType {
+	case "compute":
+		if _, err := tx.Exec(ctx, `
+			UPDATE compute_resources SET status = $1, updated_at = now() WHERE id = $2
+		`, change.Status, change.ResourceID); err != nil {
+			return err
+		}
+	case "storage":
+		if _, err := tx.Exec(ctx, `
+			UPDATE storage_volumes SET status = $1, updated_at = now() WHERE id = $2
+		`, change.Status, change.ResourceID); err != nil {
+			return err
+		}
+	case "attachment":
+		if _, err := tx.Exec(ctx, `
+			UPDATE storage_attachments SET status = $1, updated_at = now() WHERE id = $2
+		`, change.Status, change.ResourceID); err != nil {
+			return err
+		}
+	}
+	metadata := map[string]string{}
+	for key, value := range change.Metadata {
+		metadata[key] = value
+	}
+	rawMetadata, err := json.Marshal(metadata)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE managed_resource_views
+		SET status = $1,
+		    metadata = metadata || $2::jsonb,
+		    last_seen_at = now(),
+		    updated_at = now()
+		WHERE workspace_id = $3 AND resource_type = $4
+	`, change.Status, rawMetadata, change.WorkspaceID, change.ResourceType); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *WorkspaceStore) UpsertLifecycleStep(ctx context.Context, step workspace.LifecycleStepChange) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO workspace_lifecycle_steps
+		  (id, workspace_id, step_name, desired_state, actual_state, provider_resource_id, error_code, last_checked_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+		ON CONFLICT (workspace_id, step_name)
+		DO UPDATE SET desired_state = EXCLUDED.desired_state,
+		              actual_state = EXCLUDED.actual_state,
+		              provider_resource_id = EXCLUDED.provider_resource_id,
+		              error_code = EXCLUDED.error_code,
+		              last_checked_at = now(),
+		              updated_at = now()
+	`, stepID(step.WorkspaceID, step.StepName), step.WorkspaceID, step.StepName, step.DesiredState, step.ActualState, step.ProviderResourceID, step.ErrorCode)
+	return err
+}
+
+func (s *WorkspaceStore) SaveBackup(ctx context.Context, backup workspace.BackupRecord) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO workspace_backups (id, workspace_id, storage_id, provider_resource_id, status, created_by_user_id)
+		VALUES ($1, $2, NULLIF($3, ''), $4, $5, $6)
+		ON CONFLICT (id)
+		DO UPDATE SET provider_resource_id = EXCLUDED.provider_resource_id,
+		              status = EXCLUDED.status,
+		              updated_at = now()
+	`, backup.BackupID, backup.WorkspaceID, backup.StorageID, backup.ProviderResourceID, backup.Status, backup.ActorUserID)
+	return err
 }
 
 func (s *WorkspaceStore) ReplaceActiveToken(ctx context.Context, change workspace.TokenChange) error {
@@ -316,3 +415,7 @@ func (s *WorkspaceStore) DeleteActiveToken(ctx context.Context, request workspac
 }
 
 var _ workspace.Repository = (*WorkspaceStore)(nil)
+
+func stepID(workspaceID, stepName string) string {
+	return "step-" + workspaceID + "-" + stepName
+}

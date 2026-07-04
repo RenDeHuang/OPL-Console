@@ -9,8 +9,9 @@
       "Managed storage policy and lifecycle",
       "Managed attachment lifecycle",
       "Managed workspace route handoff",
+      "Managed storage backup and restore",
       "Managed connector and environment approval status",
-      "Runtime readiness for governed resources"
+      "Runtime readiness and runtime status for governed resources"
     ],
     "consoleDoesNotOwn": [
       "Fabric platform catalog truth",
@@ -31,10 +32,12 @@
     "AttachStorage",
     "DetachStorage",
     "DestroyStorage",
+    "CreateStorageBackup",
+    "RestoreStorageBackup",
     "CreateWorkspaceRoute",
     "DestroyWorkspaceRoute",
     "ResetWorkspaceToken",
     "DeleteWorkspaceToken",
-    "InspectRuntime"
+    "RuntimeStatus"
   ]
 }

@@ -12,9 +12,12 @@ import (
 type WorkspaceService interface {
 	CreateWorkspace(ctx context.Context, request workspace.CreateWorkspaceRequest) (workspace.CreateWorkspaceResult, error)
 	Handoff(ctx context.Context, request workspace.HandoffRequest) (workspace.HandoffResult, error)
-	ConfigureWorkspace(ctx context.Context, request workspace.ActionRequest) (workspace.ActionResult, error)
-	SuspendWorkspace(ctx context.Context, request workspace.ActionRequest) (workspace.ActionResult, error)
-	DeleteWorkspace(ctx context.Context, request workspace.ActionRequest) (workspace.ActionResult, error)
+	StopCompute(ctx context.Context, request workspace.ActionRequest) (workspace.ActionResult, error)
+	RestartCompute(ctx context.Context, request workspace.ActionRequest) (workspace.ActionResult, error)
+	DestroyCompute(ctx context.Context, request workspace.ActionRequest) (workspace.ActionResult, error)
+	DestroyStorage(ctx context.Context, request workspace.ActionRequest) (workspace.ActionResult, error)
+	CreateStorageBackup(ctx context.Context, request workspace.ActionRequest) (workspace.ActionResult, error)
+	RestoreStorageBackup(ctx context.Context, request workspace.ActionRequest) (workspace.ActionResult, error)
 	ResetWorkspaceToken(ctx context.Context, request workspace.TokenRequest) (workspace.ActionResult, error)
 	DeleteWorkspaceToken(ctx context.Context, request workspace.ActionRequest) (workspace.ActionResult, error)
 }
@@ -64,19 +67,34 @@ func mountWorkspaceRoutes(router Router, deps Dependencies) {
 		writeJSON(w, http.StatusCreated, result)
 	})
 
-	router.Post("/api/workspaces/{id}/configure", func(w http.ResponseWriter, r *http.Request) {
+	router.Post("/api/workspaces/{id}/stop-compute", func(w http.ResponseWriter, r *http.Request) {
 		lifecycleAction(w, r, deps, func(ctx context.Context, service WorkspaceService, request workspace.ActionRequest) (workspace.ActionResult, error) {
-			return service.ConfigureWorkspace(ctx, request)
+			return service.StopCompute(ctx, request)
 		})
 	})
-	router.Post("/api/workspaces/{id}/suspend", func(w http.ResponseWriter, r *http.Request) {
+	router.Post("/api/workspaces/{id}/restart-compute", func(w http.ResponseWriter, r *http.Request) {
 		lifecycleAction(w, r, deps, func(ctx context.Context, service WorkspaceService, request workspace.ActionRequest) (workspace.ActionResult, error) {
-			return service.SuspendWorkspace(ctx, request)
+			return service.RestartCompute(ctx, request)
 		})
 	})
-	router.Post("/api/workspaces/{id}/delete", func(w http.ResponseWriter, r *http.Request) {
+	router.Post("/api/workspaces/{id}/destroy-compute", func(w http.ResponseWriter, r *http.Request) {
 		lifecycleAction(w, r, deps, func(ctx context.Context, service WorkspaceService, request workspace.ActionRequest) (workspace.ActionResult, error) {
-			return service.DeleteWorkspace(ctx, request)
+			return service.DestroyCompute(ctx, request)
+		})
+	})
+	router.Post("/api/workspaces/{id}/destroy-storage", func(w http.ResponseWriter, r *http.Request) {
+		lifecycleAction(w, r, deps, func(ctx context.Context, service WorkspaceService, request workspace.ActionRequest) (workspace.ActionResult, error) {
+			return service.DestroyStorage(ctx, request)
+		})
+	})
+	router.Post("/api/workspaces/{id}/create-backup", func(w http.ResponseWriter, r *http.Request) {
+		lifecycleAction(w, r, deps, func(ctx context.Context, service WorkspaceService, request workspace.ActionRequest) (workspace.ActionResult, error) {
+			return service.CreateStorageBackup(ctx, request)
+		})
+	})
+	router.Post("/api/workspaces/{id}/restore-backup", func(w http.ResponseWriter, r *http.Request) {
+		lifecycleAction(w, r, deps, func(ctx context.Context, service WorkspaceService, request workspace.ActionRequest) (workspace.ActionResult, error) {
+			return service.RestoreStorageBackup(ctx, request)
 		})
 	})
 	router.Post("/api/workspaces/{id}/tokens/reset", func(w http.ResponseWriter, r *http.Request) {
@@ -126,10 +144,24 @@ func lifecycleAction(
 	result, err := run(r.Context(), deps.Workspace, workspace.ActionRequest{
 		WorkspaceID: chi.URLParam(r, "id"),
 		ActorUserID: session.User.ID,
+		Confirm:     actionConfirm(r),
 	})
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "workspace_lifecycle_failed"})
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+func actionConfirm(r *http.Request) bool {
+	if r.Body == nil {
+		return false
+	}
+	var payload struct {
+		Confirm bool `json:"confirm"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		return false
+	}
+	return payload.Confirm
 }

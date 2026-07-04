@@ -27,6 +27,17 @@ button {
   gap: 8px;
 }
 
+.button-link {
+  background: #1769aa;
+  border-radius: 6px;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  text-decoration: none;
+}
+
 button:disabled {
   opacity: 0.65;
   cursor: not-allowed;
@@ -58,6 +69,13 @@ button.danger {
 .topbar a.active {
   color: #1769aa;
   font-weight: 600;
+}
+
+.nav-group {
+  color: #647086;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 .shell {
@@ -253,6 +271,14 @@ button.danger {
   grid-column: 1 / -1;
   color: #9d2835;
   margin: 0;
+}
+
+.danger-zone {
+  border-top: 1px solid #edf0f5;
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 16px;
 }
 
 .ticket-row {

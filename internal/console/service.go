@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/RenDeHuang/opl-console/internal/auth"
+	"github.com/RenDeHuang/opl-console/internal/ledger"
 )
 
 type Repository interface {
@@ -11,6 +12,7 @@ type Repository interface {
 	PrimaryOrganizationForUser(ctx context.Context, userID string) (OrganizationView, error)
 	Packages(ctx context.Context) ([]Package, error)
 	WorkspacesForUser(ctx context.Context, userID string) ([]ManagedWorkspace, error)
+	WorkspaceDetailForUser(ctx context.Context, userID string, workspaceID string) (WorkspaceDetail, error)
 	AdminUsers(ctx context.Context) ([]UserView, error)
 	AdminOrganizations(ctx context.Context) ([]OrganizationView, error)
 	AdminTeams(ctx context.Context) ([]TeamView, error)
@@ -18,7 +20,9 @@ type Repository interface {
 	AdminManagedResources(ctx context.Context) ([]ManagedResourceView, error)
 	WalletForUser(ctx context.Context, userID string) (WalletView, error)
 	BillingLedgerForUser(ctx context.Context, userID string) ([]BillingLedgerEntryView, error)
+	AdminBillingLedger(ctx context.Context) ([]BillingLedgerEntryView, error)
 	SupportTicketsForUser(ctx context.Context, userID string) ([]SupportTicketView, error)
+	AdminSupportTickets(ctx context.Context) ([]SupportTicketView, error)
 	CreateSupportTicket(ctx context.Context, userID string, request CreateSupportTicketRequest) (SupportTicketView, error)
 	AdminPolicies(ctx context.Context) ([]PolicyView, error)
 	CreatePolicy(ctx context.Context, actorUserID string, request CreatePolicyRequest) (PolicyView, error)
@@ -27,11 +31,24 @@ type Repository interface {
 }
 
 type Service struct {
-	repo Repository
+	repo   Repository
+	ledger ledger.Port
 }
 
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+type Option func(*Service)
+
+func WithLedger(ledgerPort ledger.Port) Option {
+	return func(s *Service) {
+		s.ledger = ledgerPort
+	}
+}
+
+func NewService(repo Repository, options ...Option) *Service {
+	service := &Service{repo: repo}
+	for _, option := range options {
+		option(service)
+	}
+	return service
 }
 
 func (s *Service) Me(ctx context.Context, user auth.User) (Me, error) {
@@ -52,6 +69,10 @@ func (s *Service) Packages(ctx context.Context) ([]Package, error) {
 
 func (s *Service) Workspaces(ctx context.Context, user auth.User) ([]ManagedWorkspace, error) {
 	return s.repo.WorkspacesForUser(ctx, user.ID)
+}
+
+func (s *Service) WorkspaceDetail(ctx context.Context, user auth.User, workspaceID string) (WorkspaceDetail, error) {
+	return s.repo.WorkspaceDetailForUser(ctx, user.ID, workspaceID)
 }
 
 func (s *Service) AdminUsers(ctx context.Context) ([]UserView, error) {
@@ -82,8 +103,55 @@ func (s *Service) BillingLedger(ctx context.Context, user auth.User) ([]BillingL
 	return s.repo.BillingLedgerForUser(ctx, user.ID)
 }
 
+func (s *Service) AdminBillingLedger(ctx context.Context) ([]BillingLedgerEntryView, error) {
+	return s.repo.AdminBillingLedger(ctx)
+}
+
+func (s *Service) WorkspaceQuote(ctx context.Context, user auth.User, request WorkspaceQuoteRequest) (WorkspaceQuoteView, error) {
+	if s.ledger == nil {
+		wallet, err := s.repo.WalletForUser(ctx, user.ID)
+		if err != nil {
+			return WorkspaceQuoteView{}, err
+		}
+		request.BillingAccountID = wallet.BillingAccountID
+		return WorkspaceQuoteView{BillingAccountID: request.BillingAccountID, PackageID: request.PackageID, Currency: "CNY", Source: "console_unconfigured"}, nil
+	}
+	if request.BillingAccountID == "" {
+		wallet, err := s.repo.WalletForUser(ctx, user.ID)
+		if err != nil {
+			return WorkspaceQuoteView{}, err
+		}
+		request.BillingAccountID = wallet.BillingAccountID
+	}
+	quote, err := s.ledger.QuoteWorkspace(ctx, ledger.WorkspaceQuoteRequest{BillingAccountID: request.BillingAccountID, PackageID: request.PackageID})
+	if err != nil {
+		return WorkspaceQuoteView{}, err
+	}
+	return WorkspaceQuoteView{
+		BillingAccountID:  quote.BillingAccountID,
+		PackageID:         quote.PackageID,
+		Currency:          quote.Currency,
+		ComputeHourlyFen:  quote.ComputeHourlyFen,
+		StorageGBMonthFen: quote.StorageGBMonthFen,
+		StorageGB:         quote.StorageGB,
+		HoldDays:          quote.HoldDays,
+		ComputeHoldFen:    quote.ComputeHoldFen,
+		StorageHoldFen:    quote.StorageHoldFen,
+		TotalHoldFen:      quote.TotalHoldFen,
+		BalanceFen:        quote.BalanceFen,
+		FrozenFen:         quote.FrozenFen,
+		AvailableFen:      quote.AvailableFen,
+		SufficientBalance: quote.SufficientBalance,
+		Source:            quote.Source,
+	}, nil
+}
+
 func (s *Service) SupportTickets(ctx context.Context, user auth.User) ([]SupportTicketView, error) {
 	return s.repo.SupportTicketsForUser(ctx, user.ID)
+}
+
+func (s *Service) AdminSupportTickets(ctx context.Context) ([]SupportTicketView, error) {
+	return s.repo.AdminSupportTickets(ctx)
 }
 
 func (s *Service) CreateSupportTicket(ctx context.Context, user auth.User, request CreateSupportTicketRequest) (SupportTicketView, error) {

@@ -272,7 +272,7 @@ func TestCreateWorkspacePersistsFacadeStateAndLedgerEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create workspace: %v", err)
 	}
-	if result.State != "ready" || result.URL != "https://workspace.example/ws-alpha" {
+	if result.State != "running" || result.URL != "https://workspace.example/ws-alpha" {
 		t.Fatalf("result = %#v", result)
 	}
 	assertCalls(t, fabricPort.calls, []string{
@@ -299,7 +299,7 @@ func TestCreateWorkspacePersistsFacadeStateAndLedgerEvidence(t *testing.T) {
 	}
 }
 
-func TestSuspendWorkspaceDestroysRouteAndUpdatesState(t *testing.T) {
+func TestStopComputeRetainsRouteAndStorage(t *testing.T) {
 	fabricPort := &recordingFabric{}
 	repository := &recordingWorkspaceRepository{
 		runtime: RuntimeRecord{WorkspaceID: "ws-alpha", ActorUserID: "usr-owner", ComputeID: "cmp-ws-alpha", StorageID: "stg-ws-alpha"},
@@ -307,18 +307,18 @@ func TestSuspendWorkspaceDestroysRouteAndUpdatesState(t *testing.T) {
 	ledgerPort := &recordingLedger{}
 	service := NewService(fabricPort, WithRepository(repository), WithLedger(ledgerPort))
 
-	result, err := service.SuspendWorkspace(context.Background(), ActionRequest{WorkspaceID: "ws-alpha", ActorUserID: "usr-owner"})
+	result, err := service.StopCompute(context.Background(), ActionRequest{WorkspaceID: "ws-alpha", ActorUserID: "usr-owner"})
 	if err != nil {
-		t.Fatalf("SuspendWorkspace: %v", err)
+		t.Fatalf("StopCompute: %v", err)
 	}
-	if result.State != "suspended" {
+	if result.State != "stopped_server_disk_retained" {
 		t.Fatalf("result = %#v", result)
 	}
-	assertCalls(t, fabricPort.calls, []string{"destroy_route"})
-	if len(repository.stateChanges) != 1 || repository.stateChanges[0].State != "suspended" {
+	assertCalls(t, fabricPort.calls, []string{"stop_compute"})
+	if len(repository.stateChanges) != 2 || repository.stateChanges[1].State != "stopped_server_disk_retained" {
 		t.Fatalf("state changes = %#v", repository.stateChanges)
 	}
-	if len(ledgerPort.auditEvents) != 1 || ledgerPort.auditEvents[0].Action != "workspace.suspend" {
+	if len(ledgerPort.auditEvents) != 1 || ledgerPort.auditEvents[0].Action != "workspace.compute.stop" {
 		t.Fatalf("audit events = %#v", ledgerPort.auditEvents)
 	}
 }
@@ -403,6 +403,18 @@ func (r *recordingWorkspaceRepository) UpdateWorkspaceState(ctx context.Context,
 	return nil
 }
 
+func (r *recordingWorkspaceRepository) UpdateResourceState(ctx context.Context, change ResourceStateChange) error {
+	return nil
+}
+
+func (r *recordingWorkspaceRepository) UpsertLifecycleStep(ctx context.Context, step LifecycleStepChange) error {
+	return nil
+}
+
+func (r *recordingWorkspaceRepository) SaveBackup(ctx context.Context, backup BackupRecord) error {
+	return nil
+}
+
 func (r *recordingWorkspaceRepository) ReplaceActiveToken(ctx context.Context, change TokenChange) error {
 	r.tokenChanges = append(r.tokenChanges, change)
 	return nil
@@ -422,6 +434,10 @@ func (r *recordingLedger) GetWallet(ctx context.Context, billingAccountID string
 	return ledger.Wallet{BillingAccountID: billingAccountID, BalanceFen: 1000, AvailableFen: 900}, nil
 }
 
+func (r *recordingLedger) QuoteWorkspace(ctx context.Context, request ledger.WorkspaceQuoteRequest) (ledger.WorkspaceQuote, error) {
+	return ledger.WorkspaceQuote{BillingAccountID: request.BillingAccountID, PackageID: request.PackageID, TotalHoldFen: 100, AvailableFen: 900, SufficientBalance: true, Source: "test"}, nil
+}
+
 func (r *recordingLedger) FreezeHold(ctx context.Context, request ledger.HoldRequest) error {
 	r.holds = append(r.holds, request)
 	return nil
@@ -439,6 +455,18 @@ func (r *recordingLedger) RecordManualTopUp(ctx context.Context, request ledger.
 	return nil
 }
 
+func (r *recordingLedger) BillingLedger(ctx context.Context, billingAccountID string) ([]ledger.LedgerEntry, error) {
+	return []ledger.LedgerEntry{}, nil
+}
+
+func (r *recordingLedger) AdminBillingLedger(ctx context.Context) ([]ledger.LedgerEntry, error) {
+	return []ledger.LedgerEntry{}, nil
+}
+
+func (r *recordingLedger) ReconciliationStatus(ctx context.Context) (ledger.ReconciliationStatus, error) {
+	return ledger.ReconciliationStatus{Ready: true, Status: "ready"}, nil
+}
+
 func (r *recordingLedger) RecordAuditEvent(ctx context.Context, event ledger.AuditEvent) error {
 	r.auditEvents = append(r.auditEvents, event)
 	return nil
@@ -449,12 +477,26 @@ func (r *recordingLedger) RecordReceipt(ctx context.Context, receipt ledger.Rece
 	return nil
 }
 
+func (r *recordingLedger) Receipts(ctx context.Context, subjectID string) ([]ledger.Receipt, error) {
+	return r.receipts, nil
+}
+
 func (f *recordingFabric) CreateCompute(ctx context.Context, request fabric.CreateComputeRequest) (fabric.RuntimeHandle, error) {
 	f.calls = append(f.calls, "create_compute")
 	f.createCompute = request
 	if f.createComputeErr != nil {
 		return fabric.RuntimeHandle{}, f.createComputeErr
 	}
+	return fabric.RuntimeHandle{ProviderResourceID: "local-compute/" + request.ComputeID, Status: "running"}, nil
+}
+
+func (f *recordingFabric) StopCompute(ctx context.Context, request fabric.StopComputeRequest) (fabric.RuntimeHandle, error) {
+	f.calls = append(f.calls, "stop_compute")
+	return fabric.RuntimeHandle{ProviderResourceID: "local-compute/" + request.ComputeID, Status: "stopped"}, nil
+}
+
+func (f *recordingFabric) RestartCompute(ctx context.Context, request fabric.RestartComputeRequest) (fabric.RuntimeHandle, error) {
+	f.calls = append(f.calls, "restart_compute")
 	return fabric.RuntimeHandle{ProviderResourceID: "local-compute/" + request.ComputeID, Status: "running"}, nil
 }
 
@@ -471,6 +513,21 @@ func (f *recordingFabric) AttachStorage(ctx context.Context, request fabric.Atta
 		return fabric.RuntimeHandle{}, f.attachStorageErr
 	}
 	return fabric.RuntimeHandle{ProviderResourceID: request.ComputeID + ":" + request.StorageID, Status: "attached"}, nil
+}
+
+func (f *recordingFabric) DetachStorage(ctx context.Context, request fabric.DetachStorageRequest) (fabric.RuntimeHandle, error) {
+	f.calls = append(f.calls, "detach_storage")
+	return fabric.RuntimeHandle{ProviderResourceID: request.AttachmentID, Status: "detached_retained"}, nil
+}
+
+func (f *recordingFabric) CreateStorageBackup(ctx context.Context, request fabric.BackupStorageRequest) (fabric.RuntimeHandle, error) {
+	f.calls = append(f.calls, "create_backup")
+	return fabric.RuntimeHandle{ProviderResourceID: "local-backup/" + request.BackupID, Status: "ready"}, nil
+}
+
+func (f *recordingFabric) RestoreStorageBackup(ctx context.Context, request fabric.RestoreStorageRequest) (fabric.RuntimeHandle, error) {
+	f.calls = append(f.calls, "restore_backup")
+	return fabric.RuntimeHandle{ProviderResourceID: "local-backup/" + request.BackupID, Status: "restored"}, nil
 }
 
 func (f *recordingFabric) CreateWorkspaceRoute(ctx context.Context, request fabric.CreateRouteRequest) (fabric.RuntimeHandle, error) {
@@ -508,6 +565,10 @@ func (f *recordingFabric) ResetWorkspaceToken(ctx context.Context, request fabri
 
 func (f *recordingFabric) DeleteWorkspaceToken(ctx context.Context, request fabric.DeleteWorkspaceTokenRequest) error {
 	return nil
+}
+
+func (f *recordingFabric) RuntimeStatus(ctx context.Context, request fabric.RuntimeStatusRequest) (fabric.RuntimeStatus, error) {
+	return fabric.RuntimeStatus{Ready: true, WorkspaceID: request.WorkspaceID, ComputeState: "running", StorageState: "available", RouteState: "ready"}, nil
 }
 
 func assertPackage(t *testing.T, plan fabric.PackagePlan) {

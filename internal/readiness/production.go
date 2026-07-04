@@ -15,22 +15,30 @@ type Report struct {
 
 func Production(cfg config.Config) Report {
 	checks := map[string]bool{
-		"database_url":            strings.TrimSpace(cfg.DatabaseURL) != "",
-		"public_url":              strings.HasPrefix(cfg.PublicURL, "https://") && !strings.Contains(cfg.PublicURL, "127.0.0.1"),
-		"workspace_domain":        strings.Contains(cfg.WorkspaceDomain, ".") && !strings.Contains(cfg.WorkspaceDomain, "localhost"),
-		"kube_config":             strings.TrimSpace(cfg.KubeconfigPath) != "" || inClusterServiceAccount(),
-		"kube_namespace":          strings.TrimSpace(cfg.KubeNamespace) != "",
-		"ingress_class":           cfg.IngressClass == "qcloud" || cfg.IngressClass == "nginx-production",
-		"workspace_image":         productionImage(cfg.WorkspaceImage),
-		"workspace_storage_class": strings.TrimSpace(cfg.WorkspaceStorageClass) != "",
-		"fabric_provider":         cfg.FabricProvider == "tke",
-		"auth_seed":               productionAuthSeed(cfg.ConsoleUsersJSON),
+		"database.postgres_url":      strings.TrimSpace(cfg.DatabaseURL) != "",
+		"auth.seed_without_defaults": productionAuthSeed(cfg.ConsoleUsersJSON),
+		"console.public_https_url":   strings.HasPrefix(cfg.PublicURL, "https://") && !strings.Contains(cfg.PublicURL, "127.0.0.1"),
+		"workspace.domain":           strings.Contains(cfg.WorkspaceDomain, ".") && !strings.Contains(cfg.WorkspaceDomain, "localhost"),
+		"kubernetes.config":          strings.TrimSpace(cfg.KubeconfigPath) != "" || inClusterServiceAccount(),
+		"kubernetes.namespace":       strings.TrimSpace(cfg.KubeNamespace) != "",
+		"kubernetes.ingress_class":   cfg.IngressClass == "qcloud" || cfg.IngressClass == "nginx-production",
+		"kubernetes.storage_class":   strings.TrimSpace(cfg.WorkspaceStorageClass) != "",
+		"registry.workspace_image":   productionImage(cfg.WorkspaceImage),
+		"fabric.provider":            cfg.FabricProvider == "tke" || externalDependency(cfg.FabricURL, cfg.FabricToken),
+		"fabric.external_contract":   cfg.FabricProvider != "http" || externalDependency(cfg.FabricURL, cfg.FabricToken),
+		"ledger.external_contract":   cfg.LedgerURL == "" || externalDependency(cfg.LedgerURL, cfg.LedgerToken),
+		"secrets.fabric_token":       cfg.FabricURL == "" || strings.TrimSpace(cfg.FabricToken) != "",
+		"secrets.ledger_token":       cfg.LedgerURL == "" || strings.TrimSpace(cfg.LedgerToken) != "",
 	}
 	ready := true
 	for _, ok := range checks {
 		ready = ready && ok
 	}
 	return Report{Ready: ready, Checks: checks}
+}
+
+func externalDependency(url string, token string) bool {
+	return strings.HasPrefix(strings.TrimSpace(url), "https://") && strings.TrimSpace(token) != ""
 }
 
 func inClusterServiceAccount() bool {

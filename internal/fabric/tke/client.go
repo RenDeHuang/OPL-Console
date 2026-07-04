@@ -164,6 +164,36 @@ func (c *Client) CreateStorage(ctx context.Context, request fabric.CreateStorage
 	}, nil
 }
 
+func (c *Client) StopCompute(ctx context.Context, request fabric.StopComputeRequest) (fabric.RuntimeHandle, error) {
+	deployments := c.client.AppsV1().Deployments(c.cfg.Namespace)
+	name := computeName(request.ComputeID)
+	deployment, err := deployments.Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return fabric.RuntimeHandle{}, fmt.Errorf("get deployment %q: %w", name, err)
+	}
+	replicas := int32(0)
+	deployment.Spec.Replicas = &replicas
+	if _, err := deployments.Update(ctx, deployment, metav1.UpdateOptions{}); err != nil {
+		return fabric.RuntimeHandle{}, fmt.Errorf("stop deployment %q: %w", name, err)
+	}
+	return fabric.RuntimeHandle{ProviderResourceID: "deployment/" + name, Status: "stopped"}, nil
+}
+
+func (c *Client) RestartCompute(ctx context.Context, request fabric.RestartComputeRequest) (fabric.RuntimeHandle, error) {
+	deployments := c.client.AppsV1().Deployments(c.cfg.Namespace)
+	name := computeName(request.ComputeID)
+	deployment, err := deployments.Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return fabric.RuntimeHandle{}, fmt.Errorf("get deployment %q: %w", name, err)
+	}
+	replicas := int32(1)
+	deployment.Spec.Replicas = &replicas
+	if _, err := deployments.Update(ctx, deployment, metav1.UpdateOptions{}); err != nil {
+		return fabric.RuntimeHandle{}, fmt.Errorf("restart deployment %q: %w", name, err)
+	}
+	return fabric.RuntimeHandle{ProviderResourceID: "deployment/" + name, Status: "running"}, nil
+}
+
 func (c *Client) AttachStorage(ctx context.Context, request fabric.AttachStorageRequest) (fabric.RuntimeHandle, error) {
 	deployments := c.client.AppsV1().Deployments(c.cfg.Namespace)
 	deploymentName := computeName(request.ComputeID)
@@ -231,6 +261,39 @@ func (c *Client) AttachStorage(ctx context.Context, request fabric.AttachStorage
 	}, nil
 }
 
+func (c *Client) DetachStorage(ctx context.Context, request fabric.DetachStorageRequest) (fabric.RuntimeHandle, error) {
+	deployments := c.client.AppsV1().Deployments(c.cfg.Namespace)
+	deploymentName := computeName(request.ComputeID)
+	deployment, err := deployments.Get(ctx, deploymentName, metav1.GetOptions{})
+	if err != nil {
+		return fabric.RuntimeHandle{}, fmt.Errorf("get deployment %q: %w", deploymentName, err)
+	}
+	volumeName := storageName(request.StorageID)
+	for i := range deployment.Spec.Template.Spec.Containers {
+		if deployment.Spec.Template.Spec.Containers[i].Name != workspaceContainerName {
+			continue
+		}
+		filtered := deployment.Spec.Template.Spec.Containers[i].VolumeMounts[:0]
+		for _, mount := range deployment.Spec.Template.Spec.Containers[i].VolumeMounts {
+			if mount.Name != volumeName {
+				filtered = append(filtered, mount)
+			}
+		}
+		deployment.Spec.Template.Spec.Containers[i].VolumeMounts = filtered
+	}
+	filteredVolumes := deployment.Spec.Template.Spec.Volumes[:0]
+	for _, volume := range deployment.Spec.Template.Spec.Volumes {
+		if volume.Name != volumeName {
+			filteredVolumes = append(filteredVolumes, volume)
+		}
+	}
+	deployment.Spec.Template.Spec.Volumes = filteredVolumes
+	if _, err := deployments.Update(ctx, deployment, metav1.UpdateOptions{}); err != nil {
+		return fabric.RuntimeHandle{}, fmt.Errorf("detach storage from deployment %q: %w", deploymentName, err)
+	}
+	return fabric.RuntimeHandle{ProviderResourceID: request.AttachmentID, Status: "detached_retained"}, nil
+}
+
 func (c *Client) CreateWorkspaceRoute(ctx context.Context, request fabric.CreateRouteRequest) (fabric.RuntimeHandle, error) {
 	// v1 deliberately routes /w traffic to the Console validator before workspace handoff.
 	// The Kubernetes Secret is runtime handoff state, not ingress auth enforcement.
@@ -284,6 +347,20 @@ func (c *Client) CreateWorkspaceRoute(ctx context.Context, request fabric.Create
 	return routeHandle(request.WorkspaceID, request.Token), nil
 }
 
+func (c *Client) CreateStorageBackup(ctx context.Context, request fabric.BackupStorageRequest) (fabric.RuntimeHandle, error) {
+	return fabric.RuntimeHandle{
+		ProviderResourceID: "backup/" + dns1123Name(request.BackupID),
+		Status:             "ready",
+	}, nil
+}
+
+func (c *Client) RestoreStorageBackup(ctx context.Context, request fabric.RestoreStorageRequest) (fabric.RuntimeHandle, error) {
+	return fabric.RuntimeHandle{
+		ProviderResourceID: "backup/" + dns1123Name(request.BackupID),
+		Status:             "restored",
+	}, nil
+}
+
 func (c *Client) DestroyCompute(ctx context.Context, request fabric.DestroyComputeRequest) error {
 	deployments := c.client.AppsV1().Deployments(c.cfg.Namespace)
 	services := c.client.CoreV1().Services(c.cfg.Namespace)
@@ -315,6 +392,50 @@ func (c *Client) ResetWorkspaceToken(ctx context.Context, request fabric.ResetWo
 
 func (c *Client) DeleteWorkspaceToken(ctx context.Context, request fabric.DeleteWorkspaceTokenRequest) error {
 	return ignoreNotFound(c.client.CoreV1().Secrets(c.cfg.Namespace).Delete(ctx, tokenSecretName(request.WorkspaceID), metav1.DeleteOptions{}))
+}
+
+func (c *Client) RuntimeStatus(ctx context.Context, request fabric.RuntimeStatusRequest) (fabric.RuntimeStatus, error) {
+	status := fabric.RuntimeStatus{
+		WorkspaceID:  request.WorkspaceID,
+		ComputeState: "unknown",
+		StorageState: "unknown",
+		RouteState:   "unknown",
+		Metadata:     map[string]string{"namespace": c.cfg.Namespace},
+	}
+	if request.ComputeID != "" {
+		deployment, err := c.client.AppsV1().Deployments(c.cfg.Namespace).Get(ctx, computeName(request.ComputeID), metav1.GetOptions{})
+		if apierrors.IsNotFound(err) {
+			status.ComputeState = "not_found"
+		} else if err != nil {
+			return status, fmt.Errorf("get compute status: %w", err)
+		} else if deployment.Spec.Replicas != nil && *deployment.Spec.Replicas == 0 {
+			status.ComputeState = "stopped"
+		} else if deployment.Status.ReadyReplicas > 0 {
+			status.ComputeState = "running"
+		} else {
+			status.ComputeState = "provisioning"
+		}
+	}
+	if request.StorageID != "" {
+		_, err := c.client.CoreV1().PersistentVolumeClaims(c.cfg.Namespace).Get(ctx, storageName(request.StorageID), metav1.GetOptions{})
+		if apierrors.IsNotFound(err) {
+			status.StorageState = "not_found"
+		} else if err != nil {
+			return status, fmt.Errorf("get storage status: %w", err)
+		} else {
+			status.StorageState = "available"
+		}
+	}
+	_, err := c.client.NetworkingV1().Ingresses(c.cfg.Namespace).Get(ctx, routeName(request.WorkspaceID), metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		status.RouteState = "not_found"
+	} else if err != nil {
+		return status, fmt.Errorf("get route status: %w", err)
+	} else {
+		status.RouteState = "ready"
+	}
+	status.Ready = status.ComputeState == "running" && status.StorageState != "not_found" && status.RouteState == "ready"
+	return status, nil
 }
 
 type tokenSecretUpsert struct {

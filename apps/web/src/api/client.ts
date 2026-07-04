@@ -23,6 +23,50 @@ export type ManagedWorkspace = {
   policy: string;
   url?: string;
   provider?: string;
+  packageId?: string;
+  computeStatus?: string;
+  storageStatus?: string;
+  attachmentStatus?: string;
+  tokenStatus?: string;
+  estimatedHoldFen?: number;
+};
+export type LifecycleStep = {
+  stepName: string;
+  desiredState: string;
+  actualState: string;
+  providerResourceId?: string;
+  errorCode?: string;
+  lastCheckedAt?: string;
+};
+export type ReceiptView = {
+  id: string;
+  receiptType: string;
+  subjectType: string;
+  subjectId: string;
+  operationId?: string;
+  payload?: unknown;
+};
+export type AuditEventView = {
+  id: string;
+  actorUserId: string;
+  action: string;
+  objectType: string;
+  objectId: string;
+  result: string;
+  metadata?: unknown;
+  createdAt?: string;
+};
+export type WorkspaceDetail = ManagedWorkspace & {
+  billingAccountId: string;
+  computeId?: string;
+  storageId?: string;
+  attachmentId?: string;
+  package: WorkspacePackage;
+  lifecycleSteps: LifecycleStep[];
+  ledgerEntries: BillingLedgerEntry[];
+  receipts: ReceiptView[];
+  supportTickets: SupportTicket[];
+  auditEvents: AuditEventView[];
 };
 export type ManagedResourceView = {
   id: string;
@@ -44,6 +88,23 @@ export type CreateWorkspacePayload = {
   token: string;
 };
 export type CreateWorkspaceResult = { workspaceId: string; url: string };
+export type WorkspaceQuote = {
+  billingAccountId: string;
+  packageId: string;
+  currency: string;
+  computeHourlyFen: number;
+  storageGbMonthFen: number;
+  storageGb: number;
+  holdDays: number;
+  computeHoldFen: number;
+  storageHoldFen: number;
+  totalHoldFen: number;
+  balanceFen: number;
+  frozenFen: number;
+  availableFen: number;
+  sufficientBalance: boolean;
+  source: string;
+};
 export type WalletView = {
   billingAccountId: string;
   balanceFen: number;
@@ -66,6 +127,12 @@ export type SupportTicket = {
   subject: string;
   body?: string;
   status: string;
+  priority?: string;
+  assigneeUserId?: string;
+  failedLifecycleStep?: string;
+  fabricErrorCode?: string;
+  runtimeStatus?: unknown;
+  ledgerSummary?: unknown;
   createdAt?: string;
 };
 export type CreateSupportTicketPayload = {
@@ -99,6 +166,7 @@ export type ApprovalView = {
   status: string;
   reason?: string;
   decisionNote?: string;
+  context?: unknown;
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -145,14 +213,22 @@ export const api = {
   me: () => request<Me>("/api/me"),
   packages: () => request<WorkspacePackage[]>("/api/packages"),
   workspaces: () => request<ManagedWorkspace[]>("/api/workspaces"),
+  workspace: (id: string) => request<WorkspaceDetail>(`/api/workspaces/${id}`),
   createWorkspace: (payload: CreateWorkspacePayload) =>
     request<CreateWorkspaceResult>("/api/workspaces", {
       method: "POST",
       body: JSON.stringify(payload)
     }),
-  configureWorkspace: (id: string) => request<CreateWorkspaceResult>(`/api/workspaces/${id}/configure`, { method: "POST" }),
-  suspendWorkspace: (id: string) => request<CreateWorkspaceResult>(`/api/workspaces/${id}/suspend`, { method: "POST" }),
-  deleteWorkspace: (id: string) => request<CreateWorkspaceResult>(`/api/workspaces/${id}/delete`, { method: "POST" }),
+  stopCompute: (id: string) => request<CreateWorkspaceResult>(`/api/workspaces/${id}/stop-compute`, { method: "POST" }),
+  restartCompute: (id: string) => request<CreateWorkspaceResult>(`/api/workspaces/${id}/restart-compute`, { method: "POST" }),
+  destroyCompute: (id: string) => request<CreateWorkspaceResult>(`/api/workspaces/${id}/destroy-compute`, { method: "POST" }),
+  destroyStorage: (id: string, confirm: boolean) =>
+    request<CreateWorkspaceResult>(`/api/workspaces/${id}/destroy-storage`, {
+      method: "POST",
+      body: JSON.stringify({ confirm })
+    }),
+  createBackup: (id: string) => request<CreateWorkspaceResult>(`/api/workspaces/${id}/create-backup`, { method: "POST" }),
+  restoreBackup: (id: string) => request<CreateWorkspaceResult>(`/api/workspaces/${id}/restore-backup`, { method: "POST" }),
   resetWorkspaceToken: (id: string, token: string) =>
     request<CreateWorkspaceResult>(`/api/workspaces/${id}/tokens/reset`, {
       method: "POST",
@@ -160,8 +236,15 @@ export const api = {
     }),
   deleteWorkspaceToken: (id: string) => request<CreateWorkspaceResult>(`/api/workspaces/${id}/tokens/delete`, { method: "POST" }),
   wallet: () => request<WalletView>("/api/billing/wallet"),
+  workspaceQuote: (billingAccountId: string, packageId: string) =>
+    request<WorkspaceQuote>("/api/billing/workspace-quote", {
+      method: "POST",
+      body: JSON.stringify({ billingAccountId, packageId })
+    }),
   billingLedger: () => request<BillingLedgerEntry[]>("/api/billing/ledger"),
+  adminLedger: () => request<BillingLedgerEntry[]>("/api/admin/ledger"),
   supportTickets: () => request<SupportTicket[]>("/api/support/tickets"),
+  adminSupportTickets: () => request<SupportTicket[]>("/api/admin/support/tickets"),
   createSupportTicket: (payload: CreateSupportTicketPayload) =>
     request<SupportTicket>("/api/support/tickets", {
       method: "POST",

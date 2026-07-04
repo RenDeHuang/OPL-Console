@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ShieldCheck, Users } from "lucide-react";
 import { api } from "../api/client";
-import { providerText, resourceText, scopeText, statusText } from "../format";
+import { fen, providerText, readinessText, resourceText, scopeText, statusText } from "../format";
 
 export function AdminOverviewPage() {
   const users = useQuery({ queryKey: ["admin-users"], queryFn: api.adminUsers, retry: false });
@@ -9,6 +9,8 @@ export function AdminOverviewPage() {
   const teams = useQuery({ queryKey: ["admin-teams"], queryFn: api.adminTeams, retry: false });
   const roles = useQuery({ queryKey: ["admin-roles"], queryFn: api.adminRoles, retry: false });
   const resources = useQuery({ queryKey: ["admin-resources"], queryFn: api.adminResources, retry: false });
+  const ledger = useQuery({ queryKey: ["admin-ledger"], queryFn: api.adminLedger, retry: false });
+  const tickets = useQuery({ queryKey: ["admin-support-tickets"], queryFn: api.adminSupportTickets, retry: false });
   const runtime = useQuery({ queryKey: ["runtime-readiness"], queryFn: api.runtimeReadiness });
   const production = useQuery({ queryKey: ["production-readiness"], queryFn: api.productionReadiness });
 
@@ -110,6 +112,42 @@ export function AdminOverviewPage() {
             <span>生产环境</span>
             <span>{production.data?.ready ? "就绪" : "未就绪"}</span>
           </div>
+          {Object.entries(production.data?.checks ?? {}).map(([key, value]) => (
+            <div className="row" key={key}>
+              <span>{readinessText(key)}</span>
+              <span>{value ? "通过" : "未通过"}</span>
+              <span>{key}</span>
+              <span />
+            </div>
+          ))}
+        </div>
+      </section>
+      <section className="panel">
+        <h2>Ledger 事件</h2>
+        <div className="table">
+          {(ledger.data ?? []).map((entry) => (
+            <div className="row" key={entry.id}>
+              <span>{entry.kind}</span>
+              <span>{fen(entry.amountFen)}</span>
+              <span>{entry.workspaceId || entry.resourceId || "账户"}</span>
+              <span>{entry.description}</span>
+            </div>
+          ))}
+          {ledger.data?.length === 0 ? <p className="muted">暂无 Ledger 事件。</p> : null}
+        </div>
+      </section>
+      <section className="panel">
+        <h2>支持队列</h2>
+        <div className="table">
+          {(tickets.data ?? []).map((ticket) => (
+            <div className="row" key={ticket.id}>
+              <span>{ticket.subject}</span>
+              <span>{ticket.workspaceId || "通用"}</span>
+              <span>{ticket.failedLifecycleStep || statusText(ticket.status)}</span>
+              <span>{ticket.fabricErrorCode || ticket.createdAt}</span>
+            </div>
+          ))}
+          {tickets.data?.length === 0 ? <p className="muted">暂无工单。</p> : null}
         </div>
       </section>
     </main>

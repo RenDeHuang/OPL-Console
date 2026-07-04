@@ -2,7 +2,12 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, X } from "lucide-react";
 import { api } from "../api/client";
-import { actionText, resourceText, statusText } from "../format";
+import { actionText, fen, resourceText, statusText } from "../format";
+
+function approvalContext(value: unknown) {
+  if (!value || typeof value !== "object") return {};
+  return value as Record<string, unknown>;
+}
 
 export function ApprovalsPage() {
   const queryClient = useQueryClient();
@@ -34,6 +39,15 @@ export function ApprovalsPage() {
               <div>
                 <strong>{actionText(approval.action)}</strong>
                 <p className="muted">{resourceText(approval.objectType) || "对象"} {approval.objectId || approval.id}</p>
+                <p className="muted">
+                  {String(approvalContext(approval.context).policyRuleTriggered ?? "策略拦截")} ·
+                  冻结 {fen(Number(approvalContext(approval.context).estimatedHoldFen ?? 0))}
+                </p>
+                <p className="muted">
+                  后续动作：{Array.isArray(approvalContext(approval.context).postApprovalActions)
+                    ? (approvalContext(approval.context).postApprovalActions as unknown[]).join(" / ")
+                    : "冻结余额 / 创建资源 / 生成访问地址"}
+                </p>
               </div>
               <span>{statusText(approval.status)}</span>
               <input

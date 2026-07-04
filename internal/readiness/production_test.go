@@ -24,8 +24,8 @@ func TestProductionReadinessPassesWithRequiredInputs(t *testing.T) {
 	if !report.Ready {
 		t.Fatalf("ready = false, checks = %#v", report.Checks)
 	}
-	if !report.Checks["fabric_provider"] {
-		t.Fatalf("fabric_provider = false, checks = %#v", report.Checks)
+	if !report.Checks["fabric.provider"] {
+		t.Fatalf("fabric.provider = false, checks = %#v", report.Checks)
 	}
 }
 
@@ -45,7 +45,7 @@ func TestProductionReadinessFailsClosedForMissingInputsAndDefaultAdmin(t *testin
 	if report.Ready {
 		t.Fatalf("ready = true, checks = %#v", report.Checks)
 	}
-	for _, check := range []string{"database_url", "public_url", "kube_config", "ingress_class", "workspace_image", "fabric_provider", "auth_seed"} {
+	for _, check := range []string{"database.postgres_url", "console.public_https_url", "kubernetes.config", "kubernetes.ingress_class", "registry.workspace_image", "fabric.provider", "auth.seed_without_defaults"} {
 		if report.Checks[check] {
 			t.Fatalf("%s = true, checks = %#v", check, report.Checks)
 		}
