@@ -42,8 +42,7 @@ func main() {
 		Users:    authStore,
 		Sessions: authStore,
 	})
-	ledgerPort := ledgerpostgres.New(pool)
-	governanceService := console.NewService(store.NewGovernanceStore(pool), console.WithLedger(ledgerPort))
+	governanceService := console.NewService(store.NewGovernanceStore(pool))
 	fabricPort, err := buildFabricPort(cfg)
 	if err != nil {
 		log.Fatal(err)
@@ -51,7 +50,7 @@ func main() {
 	workspaceService := workspace.NewService(
 		fabricPort,
 		workspace.WithRepository(store.NewWorkspaceStore(pool)),
-		workspace.WithLedger(ledgerPort),
+		workspace.WithLedger(ledgerpostgres.New(pool)),
 	)
 
 	router := api.NewRouter(api.Dependencies{

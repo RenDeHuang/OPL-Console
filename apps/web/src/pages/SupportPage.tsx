@@ -71,8 +71,6 @@ export function SupportPage() {
               {openTicketId === ticket.id ? (
                 <div className="ticket-detail">
                   <strong>{ticket.createdAt || "未记录时间"}</strong>
-                  <p>故障步骤：{ticket.failedLifecycleStep || "未关联"}</p>
-                  <p>Fabric 错误：{ticket.fabricErrorCode || "无"}</p>
                   <p>{ticket.body || "无详细内容"}</p>
                 </div>
               ) : null}

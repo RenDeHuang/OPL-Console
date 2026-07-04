@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { HardDrive, Plus, Route, Server, Settings } from "lucide-react";
-import { Link } from "react-router";
+import { HardDrive, KeyRound, Pause, Plus, Route, Server, Settings, Trash2 } from "lucide-react";
 import { api } from "../api/client";
 import { fen, packageText, providerText, statusText } from "../format";
 
@@ -17,13 +16,15 @@ export function WorkspacesPage() {
   const [name, setName] = useState("实验工作空间");
   const [workspaceId, setWorkspaceId] = useState(`ws-${Date.now().toString(36)}`);
   const [packageId, setPackageId] = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState("");
   const selectedPackageId = packageId || packages.data?.[0]?.id || "";
-  const quote = useQuery({
-    queryKey: ["workspace-quote", wallet.data?.billingAccountId, selectedPackageId],
-    queryFn: () => api.workspaceQuote(wallet.data?.billingAccountId ?? "", selectedPackageId),
-    enabled: Boolean(wallet.data?.billingAccountId && selectedPackageId),
-    retry: false
-  });
+  const selectedPackage = useMemo(
+    () => (packages.data ?? []).find((item) => item.id === selectedPackageId),
+    [packages.data, selectedPackageId]
+  );
+  const dailyComputeFen = (selectedPackage?.computeHourlyFen ?? 0) * 24;
+  const monthlyStorageFen = (selectedPackage?.storageGbMonthFen ?? 0) * (selectedPackage?.storageGb ?? 0);
+  const estimatedHoldFen = dailyComputeFen + monthlyStorageFen;
   const canCreate = Boolean(workspaceId && name && selectedPackageId && wallet.data?.billingAccountId);
   const createWorkspace = useMutation({
     mutationFn: () =>
@@ -36,6 +37,19 @@ export function WorkspacesPage() {
       }),
     onSuccess: () => {
       setWorkspaceId(`ws-${Date.now().toString(36)}`);
+      void queryClient.invalidateQueries({ queryKey: ["workspaces"] });
+      void queryClient.invalidateQueries({ queryKey: ["billing-ledger"] });
+    }
+  });
+  const lifecycle = useMutation({
+    mutationFn: ({ id, action }: { id: string; action: "configure" | "suspend" | "delete" | "reset-token" | "delete-token" }) => {
+      if (action === "configure") return api.configureWorkspace(id);
+      if (action === "suspend") return api.suspendWorkspace(id);
+      if (action === "delete") return api.deleteWorkspace(id);
+      if (action === "reset-token") return api.resetWorkspaceToken(id, randomToken());
+      return api.deleteWorkspaceToken(id);
+    },
+    onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["workspaces"] });
       void queryClient.invalidateQueries({ queryKey: ["billing-ledger"] });
     }
@@ -95,9 +109,9 @@ export function WorkspacesPage() {
           <div><Route size={16} /><span>4. 生成访问地址</span></div>
         </div>
         <div className="cost-strip">
-          <span>计算冻结：{fen(quote.data?.computeHoldFen)}</span>
-          <span>存储冻结：{fen(quote.data?.storageHoldFen)}</span>
-          <strong>{quote.data?.sufficientBalance === false ? "余额不足：" : "预计冻结："}{fen(quote.data?.totalHoldFen)}</strong>
+          <span>计算预估：{fen(dailyComputeFen)} / 天</span>
+          <span>存储预估：{fen(monthlyStorageFen)} / 月</span>
+          <strong>预计冻结：{fen(estimatedHoldFen)}</strong>
         </div>
         {createWorkspace.isError ? <p className="error">开通失败，请检查余额、策略审批和运行环境。</p> : null}
         {createWorkspace.data ? <p className="muted">访问地址：{createWorkspace.data.url || "等待审批或运行时生成"}</p> : null}
@@ -109,14 +123,44 @@ export function WorkspacesPage() {
             <div className="workspace-row" key={workspace.id}>
               <span>{workspace.name}</span>
               <span>{statusText(workspace.state)}</span>
-              <span>{statusText(workspace.computeStatus)} / {statusText(workspace.storageStatus)}</span>
+              <span>{statusText(workspace.policy)}</span>
               <span>{workspace.url ? <a href={workspace.url}>打开</a> : workspace.provider ? providerText(workspace.provider) : "待生成"}</span>
               <div className="button-row">
-                <Link className="button-link" to={`/workspaces/${workspace.id}`}>
+                <button type="button" title="配置" disabled={lifecycle.isPending} onClick={() => lifecycle.mutate({ id: workspace.id, action: "configure" })}>
                   <Settings size={16} />
-                  详情
-                </Link>
+                  配置
+                </button>
+                <button type="button" title="暂停访问" disabled={lifecycle.isPending} onClick={() => lifecycle.mutate({ id: workspace.id, action: "suspend" })}>
+                  <Pause size={16} />
+                  暂停
+                </button>
+                <button type="button" title="重置访问地址" disabled={lifecycle.isPending} onClick={() => lifecycle.mutate({ id: workspace.id, action: "reset-token" })}>
+                  <KeyRound size={16} />
+                  重置地址
+                </button>
+                <button type="button" title="停用访问地址" disabled={lifecycle.isPending} onClick={() => lifecycle.mutate({ id: workspace.id, action: "delete-token" })}>
+                  <KeyRound size={16} />
+                  停用地址
+                </button>
+                <button
+                  className="danger"
+                  type="button"
+                  title="删除运行资源"
+                  disabled={lifecycle.isPending}
+                  onClick={() => {
+                    if (deleteConfirm === workspace.id) {
+                      lifecycle.mutate({ id: workspace.id, action: "delete" });
+                      setDeleteConfirm("");
+                      return;
+                    }
+                    setDeleteConfirm(workspace.id);
+                  }}
+                >
+                  <Trash2 size={16} />
+                  {deleteConfirm === workspace.id ? "确认删除" : "删除"}
+                </button>
               </div>
+              {deleteConfirm === workspace.id ? <p className="danger-note">再次点击确认删除。此操作会销毁计算、路由和存储。</p> : null}
             </div>
           ))}
           {workspaces.data?.length === 0 ? <p className="muted">还没有托管工作空间。</p> : null}

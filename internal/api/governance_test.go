@@ -24,7 +24,6 @@ type fakeGovernanceService struct {
 	resources  []console.ManagedResourceView
 	wallet     console.WalletView
 	ledger     []console.BillingLedgerEntryView
-	quote      console.WorkspaceQuoteView
 	tickets    []console.SupportTicketView
 	policies   []console.PolicyView
 	approvals  []console.ApprovalView
@@ -44,10 +43,6 @@ func (f fakeGovernanceService) Packages(ctx context.Context) ([]console.Package,
 
 func (f fakeGovernanceService) Workspaces(ctx context.Context, user auth.User) ([]console.ManagedWorkspace, error) {
 	return f.workspaces, nil
-}
-
-func (f fakeGovernanceService) WorkspaceDetail(ctx context.Context, user auth.User, workspaceID string) (console.WorkspaceDetail, error) {
-	return console.WorkspaceDetail{ManagedWorkspace: console.ManagedWorkspace{ID: workspaceID, Name: "Alpha Workspace", State: "running"}}, nil
 }
 
 func (f fakeGovernanceService) AdminUsers(ctx context.Context) ([]console.UserView, error) {
@@ -78,19 +73,7 @@ func (f *fakeGovernanceService) BillingLedger(ctx context.Context, user auth.Use
 	return f.ledger, nil
 }
 
-func (f *fakeGovernanceService) WorkspaceQuote(ctx context.Context, user auth.User, request console.WorkspaceQuoteRequest) (console.WorkspaceQuoteView, error) {
-	return f.quote, nil
-}
-
-func (f *fakeGovernanceService) AdminBillingLedger(ctx context.Context) ([]console.BillingLedgerEntryView, error) {
-	return f.ledger, nil
-}
-
 func (f *fakeGovernanceService) SupportTickets(ctx context.Context, user auth.User) ([]console.SupportTicketView, error) {
-	return f.tickets, nil
-}
-
-func (f *fakeGovernanceService) AdminSupportTickets(ctx context.Context) ([]console.SupportTicketView, error) {
 	return f.tickets, nil
 }
 

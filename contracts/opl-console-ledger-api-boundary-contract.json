@@ -5,12 +5,9 @@
   "lifecycle": "current",
   "boundary": {
     "consoleUsesFor": [
-      "Authoritative Workspace quotes",
-      "Wallet holds and debits",
       "Governance receipts",
       "Audit events",
       "Managed billing evidence",
-      "Billing reconciliation status",
       "Receipt retention policy",
       "Ledger views for OPL Cloud-hosted or organization-managed resources"
     ],
@@ -23,7 +20,6 @@
     ]
   },
   "operations": [
-    "QuoteWorkspace",
     "GetWallet",
     "FreezeHold",
     "ReleaseHold",
@@ -33,8 +29,6 @@
     "RecordBillingLedgerEntry",
     "RecordAuditEvent",
     "RecordReceipt",
-    "ListReceipts",
-    "ReconciliationStatus",
     "ListAccountLedger",
     "ListAdminLedger"
   ]

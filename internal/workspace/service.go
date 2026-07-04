@@ -46,9 +46,6 @@ type Repository interface {
 	Handoff(ctx context.Context, request HandoffRequest) (HandoffResult, error)
 	RuntimeForAction(ctx context.Context, request ActionRequest) (RuntimeRecord, error)
 	UpdateWorkspaceState(ctx context.Context, change StateChange) error
-	UpdateResourceState(ctx context.Context, change ResourceStateChange) error
-	UpsertLifecycleStep(ctx context.Context, step LifecycleStepChange) error
-	SaveBackup(ctx context.Context, backup BackupRecord) error
 	ReplaceActiveToken(ctx context.Context, change TokenChange) error
 	DeleteActiveToken(ctx context.Context, request ActionRequest) error
 }
@@ -69,7 +66,6 @@ type ApprovalRequest struct {
 	ObjectType      string
 	ObjectID        string
 	Reason          string
-	Context         json.RawMessage
 }
 
 type CreatedWorkspace struct {
@@ -87,7 +83,6 @@ type CreatedWorkspace struct {
 	RouteProviderID   string
 	RouteURL          string
 	Token             string
-	LifecycleSteps    []LifecycleStepChange
 }
 
 type CreateWorkspaceRequest struct {
@@ -120,7 +115,6 @@ type HandoffResult struct {
 type ActionRequest struct {
 	WorkspaceID string `json:"workspaceId"`
 	ActorUserID string `json:"-"`
-	Confirm     bool   `json:"confirm,omitempty"`
 }
 
 type TokenRequest struct {
@@ -141,7 +135,6 @@ type RuntimeRecord struct {
 	BillingAccountID string
 	ComputeID        string
 	StorageID        string
-	AttachmentID     string
 	State            string
 }
 
@@ -149,32 +142,6 @@ type StateChange struct {
 	WorkspaceID string
 	ActorUserID string
 	State       string
-}
-
-type ResourceStateChange struct {
-	WorkspaceID  string
-	ResourceType string
-	ResourceID   string
-	Status       string
-	Metadata     map[string]string
-}
-
-type LifecycleStepChange struct {
-	WorkspaceID        string
-	StepName           string
-	DesiredState       string
-	ActualState        string
-	ProviderResourceID string
-	ErrorCode          string
-}
-
-type BackupRecord struct {
-	BackupID           string
-	WorkspaceID        string
-	StorageID          string
-	ProviderResourceID string
-	Status             string
-	ActorUserID        string
 }
 
 type TokenChange struct {
@@ -191,143 +158,60 @@ func (s *Service) Handoff(ctx context.Context, request HandoffRequest) (HandoffR
 	return s.repo.Handoff(ctx, request)
 }
 
-func (s *Service) StopCompute(ctx context.Context, request ActionRequest) (ActionResult, error) {
-	runtime, err := s.runtimeForAction(ctx, request)
-	if err != nil {
-		return ActionResult{}, err
-	}
-	if err := s.repo.UpdateWorkspaceState(ctx, StateChange{WorkspaceID: request.WorkspaceID, ActorUserID: request.ActorUserID, State: "stopping_server"}); err != nil {
-		return ActionResult{}, fmt.Errorf("mark stopping server: %w", err)
-	}
-	handle, err := s.fabric.StopCompute(ctx, fabric.StopComputeRequest{ComputeID: runtime.ComputeID})
-	if err != nil {
-		return ActionResult{}, fmt.Errorf("stop compute: %w", err)
-	}
-	if err := s.repo.UpdateResourceState(ctx, ResourceStateChange{WorkspaceID: request.WorkspaceID, ResourceType: "compute", ResourceID: runtime.ComputeID, Status: handle.Status}); err != nil {
-		return ActionResult{}, err
-	}
-	state := "stopped_server_disk_retained"
-	if err := s.repo.UpdateWorkspaceState(ctx, StateChange{WorkspaceID: request.WorkspaceID, ActorUserID: request.ActorUserID, State: state}); err != nil {
-		return ActionResult{}, fmt.Errorf("stop workspace state: %w", err)
-	}
-	if err := s.recordAudit(ctx, request.ActorUserID, "workspace.compute.stop", request.WorkspaceID, "succeeded", map[string]string{"state": state}); err != nil {
-		return ActionResult{}, err
-	}
-	return ActionResult{WorkspaceID: request.WorkspaceID, State: state}, nil
-}
-
-func (s *Service) RestartCompute(ctx context.Context, request ActionRequest) (ActionResult, error) {
-	runtime, err := s.runtimeForAction(ctx, request)
-	if err != nil {
-		return ActionResult{}, err
-	}
-	if err := s.repo.UpdateWorkspaceState(ctx, StateChange{WorkspaceID: request.WorkspaceID, ActorUserID: request.ActorUserID, State: "restarting_server"}); err != nil {
-		return ActionResult{}, fmt.Errorf("mark restarting server: %w", err)
-	}
-	handle, err := s.fabric.RestartCompute(ctx, fabric.RestartComputeRequest{ComputeID: runtime.ComputeID})
-	if err != nil {
-		return ActionResult{}, fmt.Errorf("restart compute: %w", err)
-	}
-	if err := s.repo.UpdateResourceState(ctx, ResourceStateChange{WorkspaceID: request.WorkspaceID, ResourceType: "compute", ResourceID: runtime.ComputeID, Status: handle.Status}); err != nil {
-		return ActionResult{}, err
-	}
-	if err := s.repo.UpdateWorkspaceState(ctx, StateChange{WorkspaceID: request.WorkspaceID, ActorUserID: request.ActorUserID, State: "running"}); err != nil {
-		return ActionResult{}, fmt.Errorf("restart workspace state: %w", err)
-	}
-	if err := s.recordAudit(ctx, request.ActorUserID, "workspace.compute.restart", request.WorkspaceID, "succeeded", map[string]string{"state": "running"}); err != nil {
-		return ActionResult{}, err
-	}
-	return ActionResult{WorkspaceID: request.WorkspaceID, State: "running"}, nil
-}
-
-func (s *Service) DestroyCompute(ctx context.Context, request ActionRequest) (ActionResult, error) {
-	runtime, err := s.runtimeForAction(ctx, request)
-	if err != nil {
-		return ActionResult{}, err
-	}
-	if err := s.repo.UpdateWorkspaceState(ctx, StateChange{WorkspaceID: request.WorkspaceID, ActorUserID: request.ActorUserID, State: "destroying_server"}); err != nil {
-		return ActionResult{}, fmt.Errorf("mark destroying server: %w", err)
-	}
-	if runtime.AttachmentID != "" {
-		if _, err := s.fabric.DetachStorage(ctx, fabric.DetachStorageRequest{AttachmentID: runtime.AttachmentID, ComputeID: runtime.ComputeID, StorageID: runtime.StorageID}); err != nil {
-			return ActionResult{}, fmt.Errorf("detach storage before compute destroy: %w", err)
-		}
-		_ = s.repo.UpdateResourceState(ctx, ResourceStateChange{WorkspaceID: request.WorkspaceID, ResourceType: "attachment", ResourceID: runtime.AttachmentID, Status: "detached_retained"})
-	}
-	if err := s.fabric.DestroyCompute(ctx, fabric.DestroyComputeRequest{ComputeID: runtime.ComputeID}); err != nil {
-		return ActionResult{}, fmt.Errorf("destroy compute: %w", err)
-	}
-	_ = s.repo.UpdateResourceState(ctx, ResourceStateChange{WorkspaceID: request.WorkspaceID, ResourceType: "compute", ResourceID: runtime.ComputeID, Status: "destroyed"})
-	state := "server_destroyed_disk_retained"
-	if err := s.repo.UpdateWorkspaceState(ctx, StateChange{WorkspaceID: request.WorkspaceID, ActorUserID: request.ActorUserID, State: state}); err != nil {
-		return ActionResult{}, fmt.Errorf("destroy compute state: %w", err)
-	}
-	if err := s.recordAudit(ctx, request.ActorUserID, "workspace.compute.destroy", request.WorkspaceID, "succeeded", map[string]string{"state": state}); err != nil {
-		return ActionResult{}, err
-	}
-	return ActionResult{WorkspaceID: request.WorkspaceID, State: state}, nil
-}
-
-func (s *Service) DestroyStorage(ctx context.Context, request ActionRequest) (ActionResult, error) {
-	if !request.Confirm {
-		return ActionResult{}, fmt.Errorf("storage_destroy_confirmation_required")
-	}
-	runtime, err := s.runtimeForAction(ctx, request)
-	if err != nil {
-		return ActionResult{}, err
-	}
-	if err := s.repo.UpdateWorkspaceState(ctx, StateChange{WorkspaceID: request.WorkspaceID, ActorUserID: request.ActorUserID, State: "destroying_disk"}); err != nil {
-		return ActionResult{}, fmt.Errorf("mark destroying disk: %w", err)
-	}
-	if err := s.fabric.DestroyStorage(ctx, fabric.DestroyStorageRequest{StorageID: runtime.StorageID}); err != nil {
-		return ActionResult{}, fmt.Errorf("destroy storage: %w", err)
-	}
-	_ = s.repo.UpdateResourceState(ctx, ResourceStateChange{WorkspaceID: request.WorkspaceID, ResourceType: "storage", ResourceID: runtime.StorageID, Status: "destroyed"})
-	if err := s.repo.UpdateWorkspaceState(ctx, StateChange{WorkspaceID: request.WorkspaceID, ActorUserID: request.ActorUserID, State: "destroyed"}); err != nil {
-		return ActionResult{}, fmt.Errorf("destroy storage state: %w", err)
-	}
-	if err := s.recordAudit(ctx, request.ActorUserID, "workspace.storage.destroy", request.WorkspaceID, "succeeded", map[string]string{"state": "destroyed"}); err != nil {
-		return ActionResult{}, err
-	}
-	return ActionResult{WorkspaceID: request.WorkspaceID, State: "destroyed"}, nil
-}
-
-func (s *Service) CreateStorageBackup(ctx context.Context, request ActionRequest) (ActionResult, error) {
-	runtime, err := s.runtimeForAction(ctx, request)
-	if err != nil {
-		return ActionResult{}, err
-	}
-	backupID, err := randomID("backup")
-	if err != nil {
-		return ActionResult{}, err
-	}
-	handle, err := s.fabric.CreateStorageBackup(ctx, fabric.BackupStorageRequest{BackupID: backupID, WorkspaceID: request.WorkspaceID, StorageID: runtime.StorageID})
-	if err != nil {
-		return ActionResult{}, fmt.Errorf("create storage backup: %w", err)
-	}
-	if err := s.repo.SaveBackup(ctx, BackupRecord{BackupID: backupID, WorkspaceID: request.WorkspaceID, StorageID: runtime.StorageID, ProviderResourceID: handle.ProviderResourceID, Status: handle.Status, ActorUserID: request.ActorUserID}); err != nil {
-		return ActionResult{}, fmt.Errorf("save backup: %w", err)
-	}
-	if err := s.recordAudit(ctx, request.ActorUserID, "workspace.storage.backup", request.WorkspaceID, "succeeded", map[string]string{"backupId": backupID}); err != nil {
-		return ActionResult{}, err
-	}
-	return ActionResult{WorkspaceID: request.WorkspaceID, State: "creating_storage_backup"}, nil
-}
-
-func (s *Service) RestoreStorageBackup(ctx context.Context, request ActionRequest) (ActionResult, error) {
+func (s *Service) ConfigureWorkspace(ctx context.Context, request ActionRequest) (ActionResult, error) {
 	if _, err := s.runtimeForAction(ctx, request); err != nil {
 		return ActionResult{}, err
 	}
-	if _, err := s.fabric.RestoreStorageBackup(ctx, fabric.RestoreStorageRequest{WorkspaceID: request.WorkspaceID}); err != nil {
-		return ActionResult{}, fmt.Errorf("restore storage backup: %w", err)
+	if err := s.repo.UpdateWorkspaceState(ctx, StateChange{WorkspaceID: request.WorkspaceID, ActorUserID: request.ActorUserID, State: "configured"}); err != nil {
+		return ActionResult{}, fmt.Errorf("configure workspace state: %w", err)
 	}
-	if err := s.repo.UpdateWorkspaceState(ctx, StateChange{WorkspaceID: request.WorkspaceID, ActorUserID: request.ActorUserID, State: "restoring_storage_backup"}); err != nil {
-		return ActionResult{}, fmt.Errorf("restore backup state: %w", err)
-	}
-	if err := s.recordAudit(ctx, request.ActorUserID, "workspace.storage.restore", request.WorkspaceID, "succeeded", map[string]string{"state": "restoring_storage_backup"}); err != nil {
+	if err := s.recordAudit(ctx, request.ActorUserID, "workspace.configure", request.WorkspaceID, "succeeded", map[string]string{"state": "configured"}); err != nil {
 		return ActionResult{}, err
 	}
-	return ActionResult{WorkspaceID: request.WorkspaceID, State: "restoring_storage_backup"}, nil
+	return ActionResult{WorkspaceID: request.WorkspaceID, State: "configured"}, nil
+}
+
+func (s *Service) SuspendWorkspace(ctx context.Context, request ActionRequest) (ActionResult, error) {
+	if _, err := s.runtimeForAction(ctx, request); err != nil {
+		return ActionResult{}, err
+	}
+	if err := s.fabric.DestroyWorkspaceRoute(ctx, fabric.DestroyWorkspaceRouteRequest{WorkspaceID: request.WorkspaceID}); err != nil {
+		return ActionResult{}, fmt.Errorf("destroy workspace route: %w", err)
+	}
+	if err := s.repo.UpdateWorkspaceState(ctx, StateChange{WorkspaceID: request.WorkspaceID, ActorUserID: request.ActorUserID, State: "suspended"}); err != nil {
+		return ActionResult{}, fmt.Errorf("suspend workspace state: %w", err)
+	}
+	if err := s.recordAudit(ctx, request.ActorUserID, "workspace.suspend", request.WorkspaceID, "succeeded", map[string]string{"state": "suspended"}); err != nil {
+		return ActionResult{}, err
+	}
+	return ActionResult{WorkspaceID: request.WorkspaceID, State: "suspended"}, nil
+}
+
+func (s *Service) DeleteWorkspace(ctx context.Context, request ActionRequest) (ActionResult, error) {
+	runtime, err := s.runtimeForAction(ctx, request)
+	if err != nil {
+		return ActionResult{}, err
+	}
+	if err := s.fabric.DestroyWorkspaceRoute(ctx, fabric.DestroyWorkspaceRouteRequest{WorkspaceID: request.WorkspaceID}); err != nil {
+		return ActionResult{}, fmt.Errorf("destroy workspace route: %w", err)
+	}
+	if runtime.ComputeID != "" {
+		if err := s.fabric.DestroyCompute(ctx, fabric.DestroyComputeRequest{ComputeID: runtime.ComputeID}); err != nil {
+			return ActionResult{}, fmt.Errorf("destroy compute: %w", err)
+		}
+	}
+	if runtime.StorageID != "" {
+		if err := s.fabric.DestroyStorage(ctx, fabric.DestroyStorageRequest{StorageID: runtime.StorageID}); err != nil {
+			return ActionResult{}, fmt.Errorf("destroy storage: %w", err)
+		}
+	}
+	if err := s.repo.UpdateWorkspaceState(ctx, StateChange{WorkspaceID: request.WorkspaceID, ActorUserID: request.ActorUserID, State: "deleted"}); err != nil {
+		return ActionResult{}, fmt.Errorf("delete workspace state: %w", err)
+	}
+	if err := s.recordAudit(ctx, request.ActorUserID, "workspace.delete", request.WorkspaceID, "succeeded", map[string]string{"state": "deleted"}); err != nil {
+		return ActionResult{}, err
+	}
+	return ActionResult{WorkspaceID: request.WorkspaceID, State: "deleted"}, nil
 }
 
 func (s *Service) ResetWorkspaceToken(ctx context.Context, request TokenRequest) (ActionResult, error) {
@@ -386,17 +270,6 @@ func (s *Service) CreateWorkspace(ctx context.Context, request CreateWorkspaceRe
 			return CreateWorkspaceResult{}, fmt.Errorf("prepare create: %w", err)
 		}
 		if createContext.RequiresApproval {
-			approvalContext, err := json.Marshal(map[string]any{
-				"requesterUserId":     createContext.ActorUserID,
-				"organizationId":      createContext.OrganizationID,
-				"packageId":           request.PackageID,
-				"estimatedHoldFen":    createContext.HoldAmountFen,
-				"policyRuleTriggered": "workspace_lifecycle.requiresApproval",
-				"postApprovalActions": []string{"freeze_hold", "create_storage", "create_compute", "attach_storage", "create_route"},
-			})
-			if err != nil {
-				return CreateWorkspaceResult{}, err
-			}
 			approvalID, err := s.repo.CreateApproval(ctx, ApprovalRequest{
 				OrganizationID:  createContext.OrganizationID,
 				RequesterUserID: createContext.ActorUserID,
@@ -404,7 +277,6 @@ func (s *Service) CreateWorkspace(ctx context.Context, request CreateWorkspaceRe
 				ObjectType:      "workspace",
 				ObjectID:        request.WorkspaceID,
 				Reason:          "managed workspace policy requires approval",
-				Context:         approvalContext,
 			})
 			if err != nil {
 				return CreateWorkspaceResult{}, fmt.Errorf("create approval: %w", err)
@@ -417,23 +289,12 @@ func (s *Service) CreateWorkspace(ctx context.Context, request CreateWorkspaceRe
 	if plan.ID == "" {
 		plan = fabric.PackagePlan{ID: request.PackageID, CPU: 2, MemoryGB: 4, StorageGB: 10}
 	}
-	holdAmountFen := createContext.HoldAmountFen
-	if s.ledger != nil {
-		quote, err := s.ledger.QuoteWorkspace(ctx, ledger.WorkspaceQuoteRequest{
-			BillingAccountID: request.BillingAccountID,
-			PackageID:        request.PackageID,
-		})
-		if err != nil {
-			return CreateWorkspaceResult{}, fmt.Errorf("quote workspace: %w", err)
-		}
-		holdAmountFen = quote.TotalHoldFen
-	}
 	computeID := "cmp-" + request.WorkspaceID
 	storageID := "stg-" + request.WorkspaceID
 	attachmentID := "att-" + request.WorkspaceID
 	holdID := ""
 
-	if s.ledger != nil && holdAmountFen > 0 {
+	if s.ledger != nil && createContext.HoldAmountFen > 0 {
 		generatedHoldID, err := randomID("hold")
 		if err != nil {
 			return CreateWorkspaceResult{}, err
@@ -444,7 +305,7 @@ func (s *Service) CreateWorkspace(ctx context.Context, request CreateWorkspaceRe
 			BillingAccountID: request.BillingAccountID,
 			ResourceType:     "workspace",
 			ResourceID:       request.WorkspaceID,
-			AmountFen:        holdAmountFen,
+			AmountFen:        createContext.HoldAmountFen,
 			ActorUserID:      createContext.ActorUserID,
 		}); err != nil {
 			_ = s.recordAudit(ctx, createContext.ActorUserID, "workspace.create", request.WorkspaceID, "billing_failed", map[string]string{"error": err.Error()})
@@ -464,9 +325,6 @@ func (s *Service) CreateWorkspace(ctx context.Context, request CreateWorkspaceRe
 	})
 	if err != nil {
 		s.releaseHold(ctx, holdID, createContext.ActorUserID)
-		if s.repo != nil {
-			_ = s.repo.UpsertLifecycleStep(ctx, LifecycleStepChange{WorkspaceID: request.WorkspaceID, StepName: "create_compute", DesiredState: "running", ActualState: "failed", ErrorCode: "create_compute_failed"})
-		}
 		return CreateWorkspaceResult{}, fmt.Errorf("create compute: %w", err)
 	}
 	attachment, err := s.fabric.AttachStorage(ctx, fabric.AttachStorageRequest{
@@ -501,12 +359,6 @@ func (s *Service) CreateWorkspace(ctx context.Context, request CreateWorkspaceRe
 			RouteProviderID:   route.ProviderResourceID,
 			RouteURL:          route.URL,
 			Token:             request.Token,
-			LifecycleSteps: []LifecycleStepChange{
-				{WorkspaceID: request.WorkspaceID, StepName: "create_storage", DesiredState: "available", ActualState: storage.Status, ProviderResourceID: storage.ProviderResourceID},
-				{WorkspaceID: request.WorkspaceID, StepName: "create_compute", DesiredState: "running", ActualState: compute.Status, ProviderResourceID: compute.ProviderResourceID},
-				{WorkspaceID: request.WorkspaceID, StepName: "attach_storage", DesiredState: "attached", ActualState: attachment.Status, ProviderResourceID: attachment.ProviderResourceID},
-				{WorkspaceID: request.WorkspaceID, StepName: "create_route", DesiredState: "ready", ActualState: route.Status, ProviderResourceID: route.ProviderResourceID},
-			},
 		}); err != nil {
 			return CreateWorkspaceResult{}, fmt.Errorf("save workspace facade state: %w", err)
 		}
@@ -517,7 +369,7 @@ func (s *Service) CreateWorkspace(ctx context.Context, request CreateWorkspaceRe
 	if err := s.recordAudit(ctx, createContext.ActorUserID, "workspace.create", request.WorkspaceID, "succeeded", map[string]string{"url": route.URL}); err != nil {
 		return CreateWorkspaceResult{}, err
 	}
-	return CreateWorkspaceResult{WorkspaceID: request.WorkspaceID, URL: route.URL, State: "running"}, nil
+	return CreateWorkspaceResult{WorkspaceID: request.WorkspaceID, URL: route.URL, State: "ready"}, nil
 }
 
 func (s *Service) releaseHold(ctx context.Context, holdID string, actorUserID string) {

@@ -7,14 +7,12 @@ import { LoginPage } from "./pages/LoginPage";
 import { OwnerOverviewPage } from "./pages/OwnerOverviewPage";
 import { PoliciesPage } from "./pages/PoliciesPage";
 import { SupportPage } from "./pages/SupportPage";
-import { WorkspaceDetailPage } from "./pages/WorkspaceDetailPage";
 import { WorkspacesPage } from "./pages/WorkspacesPage";
 
 export function App() {
   return (
     <BrowserRouter>
       <nav className="topbar">
-        <span className="nav-group">Owner</span>
         <NavLink to="/" end>
           <LayoutDashboard size={16} />
           控制台
@@ -23,7 +21,6 @@ export function App() {
         <NavLink to="/billing"><CreditCard size={16} /> 账单</NavLink>
         <NavLink to="/support"><HelpCircle size={16} /> 工单</NavLink>
         <NavLink to="/login"><LockKeyhole size={16} /> 登录</NavLink>
-        <span className="nav-group">Admin</span>
         <NavLink to="/admin"><Shield size={16} /> 管理</NavLink>
         <NavLink to="/admin/policies"><Stamp size={16} /> 策略</NavLink>
         <NavLink to="/admin/approvals"><Shield size={16} /> 审批</NavLink>
@@ -31,7 +28,6 @@ export function App() {
       <Routes>
         <Route path="/" element={<OwnerOverviewPage />} />
         <Route path="/workspaces" element={<WorkspacesPage />} />
-        <Route path="/workspaces/:id" element={<WorkspaceDetailPage />} />
         <Route path="/billing" element={<BillingPage />} />
         <Route path="/support" element={<SupportPage />} />
         <Route path="/login" element={<LoginPage />} />

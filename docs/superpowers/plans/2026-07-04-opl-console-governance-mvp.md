@@ -79,9 +79,7 @@
 - Create: `internal/api/workspace.go`
 - Modify: `internal/api/router.go`
 
-- [ ] Implement managed Workspace create, stop/restart/destroy compute,
-  backup/restore/destroy storage, and token actions. Do not keep generic
-  configure/suspend/delete actions.
+- [ ] Implement managed Workspace create/configure/suspend/delete/token actions.
 - [ ] Create path must evaluate policy, create approval if needed, freeze managed
   holds when policy allows, call Fabric, write facade state, and record Ledger
   governance receipts.

@@ -14,7 +14,6 @@ type GovernanceService interface {
 	Me(ctx context.Context, user auth.User) (console.Me, error)
 	Packages(ctx context.Context) ([]console.Package, error)
 	Workspaces(ctx context.Context, user auth.User) ([]console.ManagedWorkspace, error)
-	WorkspaceDetail(ctx context.Context, user auth.User, workspaceID string) (console.WorkspaceDetail, error)
 	AdminUsers(ctx context.Context) ([]console.UserView, error)
 	AdminOrganizations(ctx context.Context) ([]console.OrganizationView, error)
 	AdminTeams(ctx context.Context) ([]console.TeamView, error)
@@ -22,10 +21,7 @@ type GovernanceService interface {
 	AdminManagedResources(ctx context.Context) ([]console.ManagedResourceView, error)
 	Wallet(ctx context.Context, user auth.User) (console.WalletView, error)
 	BillingLedger(ctx context.Context, user auth.User) ([]console.BillingLedgerEntryView, error)
-	WorkspaceQuote(ctx context.Context, user auth.User, request console.WorkspaceQuoteRequest) (console.WorkspaceQuoteView, error)
-	AdminBillingLedger(ctx context.Context) ([]console.BillingLedgerEntryView, error)
 	SupportTickets(ctx context.Context, user auth.User) ([]console.SupportTicketView, error)
-	AdminSupportTickets(ctx context.Context) ([]console.SupportTicketView, error)
 	CreateSupportTicket(ctx context.Context, user auth.User, request console.CreateSupportTicketRequest) (console.SupportTicketView, error)
 	AdminPolicies(ctx context.Context) ([]console.PolicyView, error)
 	CreatePolicy(ctx context.Context, user auth.User, request console.CreatePolicyRequest) (console.PolicyView, error)
@@ -67,19 +63,6 @@ func mountGovernanceRoutes(router Router, deps Dependencies) {
 		result, err := governanceService(deps).Workspaces(r.Context(), session.User)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "read_model_failed"})
-			return
-		}
-		writeJSON(w, http.StatusOK, result)
-	})
-
-	router.Get("/api/workspaces/{id}", func(w http.ResponseWriter, r *http.Request) {
-		session, ok := requireOwner(w, r, deps)
-		if !ok {
-			return
-		}
-		result, err := governanceService(deps).WorkspaceDetail(r.Context(), session.User, chi.URLParam(r, "id"))
-		if err != nil {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workspace_not_found"})
 			return
 		}
 		writeJSON(w, http.StatusOK, result)
@@ -144,30 +127,6 @@ func mountGovernanceRoutes(router Router, deps Dependencies) {
 		writeJSON(w, http.StatusOK, result)
 	})
 
-	router.Post("/api/billing/workspace-quote", func(w http.ResponseWriter, r *http.Request) {
-		session, ok := requireOwner(w, r, deps)
-		if !ok {
-			return
-		}
-		var payload console.WorkspaceQuoteRequest
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_json"})
-			return
-		}
-		result, err := governanceService(deps).WorkspaceQuote(r.Context(), session.User, payload)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "workspace_quote_failed"})
-			return
-		}
-		writeJSON(w, http.StatusOK, result)
-	})
-
-	router.Get("/api/admin/ledger", func(w http.ResponseWriter, r *http.Request) {
-		adminReadModel(w, r, deps, func(ctx context.Context, service GovernanceService) (any, error) {
-			return service.AdminBillingLedger(ctx)
-		})
-	})
-
 	router.Get("/api/support/tickets", func(w http.ResponseWriter, r *http.Request) {
 		session, ok := requireOwner(w, r, deps)
 		if !ok {
@@ -179,12 +138,6 @@ func mountGovernanceRoutes(router Router, deps Dependencies) {
 			return
 		}
 		writeJSON(w, http.StatusOK, result)
-	})
-
-	router.Get("/api/admin/support/tickets", func(w http.ResponseWriter, r *http.Request) {
-		adminReadModel(w, r, deps, func(ctx context.Context, service GovernanceService) (any, error) {
-			return service.AdminSupportTickets(ctx)
-		})
 	})
 
 	router.Post("/api/support/tickets", func(w http.ResponseWriter, r *http.Request) {
@@ -386,10 +339,6 @@ func (emptyGovernanceService) Workspaces(ctx context.Context, user auth.User) ([
 	return []console.ManagedWorkspace{}, nil
 }
 
-func (emptyGovernanceService) WorkspaceDetail(ctx context.Context, user auth.User, workspaceID string) (console.WorkspaceDetail, error) {
-	return console.WorkspaceDetail{}, nil
-}
-
 func (emptyGovernanceService) AdminUsers(ctx context.Context) ([]console.UserView, error) {
 	return []console.UserView{}, nil
 }
@@ -418,19 +367,7 @@ func (emptyGovernanceService) BillingLedger(ctx context.Context, user auth.User)
 	return []console.BillingLedgerEntryView{}, nil
 }
 
-func (emptyGovernanceService) WorkspaceQuote(ctx context.Context, user auth.User, request console.WorkspaceQuoteRequest) (console.WorkspaceQuoteView, error) {
-	return console.WorkspaceQuoteView{}, nil
-}
-
-func (emptyGovernanceService) AdminBillingLedger(ctx context.Context) ([]console.BillingLedgerEntryView, error) {
-	return []console.BillingLedgerEntryView{}, nil
-}
-
 func (emptyGovernanceService) SupportTickets(ctx context.Context, user auth.User) ([]console.SupportTicketView, error) {
-	return []console.SupportTicketView{}, nil
-}
-
-func (emptyGovernanceService) AdminSupportTickets(ctx context.Context) ([]console.SupportTicketView, error) {
 	return []console.SupportTicketView{}, nil
 }
 

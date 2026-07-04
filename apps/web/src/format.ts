@@ -6,25 +6,16 @@ export function statusText(value?: string) {
     attached: "已挂载",
     available: "可用",
     cancelled: "已取消",
-    creating_storage_backup: "创建备份中",
-    destroyed: "已销毁",
-    destroying_disk: "销毁存储中",
-    destroying_server: "销毁计算中",
+    configured: "已配置",
     deleted: "已删除",
-    detached_retained: "已卸载并保留",
     disabled: "停用",
-    failed: "失败",
     managed: "托管",
     open: "处理中",
     pending: "待处理",
     ready: "就绪",
     rejected: "已拒绝",
-    restoring_storage_backup: "恢复备份中",
     running: "运行中",
-    server_destroyed_disk_retained: "计算已销毁，存储保留",
-    stopped: "已停止",
-    stopped_server_disk_retained: "计算已停止，存储保留",
-    stopping_server: "停止计算中",
+    suspended: "已暂停",
     token_deleted: "地址已停用"
   };
   return labels[value ?? ""] ?? value ?? "";
@@ -93,12 +84,9 @@ export function providerText(value?: string) {
 export function actionText(value?: string) {
   const labels: Record<string, string> = {
     "workspace.create": "开通工作空间",
-    "workspace.compute.destroy": "销毁计算",
-    "workspace.compute.restart": "重启计算",
-    "workspace.compute.stop": "停止计算",
-    "workspace.storage.backup": "创建存储备份",
-    "workspace.storage.destroy": "销毁存储",
-    "workspace.storage.restore": "恢复存储备份",
+    "workspace.configure": "配置工作空间",
+    "workspace.delete": "删除工作空间",
+    "workspace.suspend": "暂停工作空间",
     "workspace.token.delete": "停用访问地址",
     "workspace.token.reset": "重置访问地址"
   };
@@ -107,34 +95,4 @@ export function actionText(value?: string) {
 
 export function fen(value?: number) {
   return `¥${((value ?? 0) / 100).toFixed(2)}`;
-}
-
-export function lifecycleStepText(value?: string) {
-  const labels: Record<string, string> = {
-    attach_storage: "挂载存储",
-    create_compute: "开通计算",
-    create_route: "生成访问地址",
-    create_storage: "开通存储"
-  };
-  return labels[value ?? ""] ?? value ?? "";
-}
-
-export function readinessText(value: string) {
-  const labels: Record<string, string> = {
-    "auth.seed_without_defaults": "默认账号禁用",
-    "console.public_https_url": "公网 HTTPS",
-    "database.postgres_url": "PostgreSQL",
-    "fabric.external_contract": "Fabric API 合同",
-    "fabric.provider": "Fabric 提供方",
-    "kubernetes.config": "K8s 配置",
-    "kubernetes.ingress_class": "Ingress",
-    "kubernetes.namespace": "命名空间",
-    "kubernetes.storage_class": "存储类",
-    "ledger.external_contract": "Ledger API 合同",
-    "registry.workspace_image": "工作空间镜像",
-    "secrets.fabric_token": "Fabric 密钥",
-    "secrets.ledger_token": "Ledger 密钥",
-    "workspace.domain": "工作空间域名"
-  };
-  return labels[value] ?? value;
 }

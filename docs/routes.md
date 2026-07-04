@@ -11,22 +11,14 @@ Route ownership does not imply product ownership of Workspace, Fabric, Ledger,
 Gateway, or billing usage generation. Console routes are facades for resources
 hosted by OPL Cloud or managed by an organization.
 
-The Go API implementation exposes the current Console contract:
+The current Go API implementation exposes only:
 
 - `GET /api/healthz`
 - `GET /api/runtime/readiness`
 - `GET /api/production/readiness`
-- auth session routes;
-- owner routes for packages, workspaces, Workspace detail, Workspace quote,
-  wallet, owner ledger, and support tickets;
-- explicit Workspace lifecycle action routes for stop/restart/destroy compute,
-  backup/restore/destroy storage, reset/delete token;
-- admin routes for users, organizations, teams, roles, policies, approvals,
-  managed resources, raw Ledger view, support queue, and readiness.
 
-The old generic `configure`, `suspend`, and `delete` Workspace routes are not
-part of the boundary. Compute and storage have separate lifecycle actions.
-Storage destruction requires explicit confirmation.
+Owner, admin, auth, managed workspace, managed billing, and support API routes
+are the contract baseline for upcoming implementation tasks.
 
 Workspace routes expose `GET /w/{workspaceId}?token=...` in the contract
 baseline only for OPL Cloud-hosted or organization-managed Workspaces. In TKE,

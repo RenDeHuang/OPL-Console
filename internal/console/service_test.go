@@ -44,10 +44,6 @@ func (f fakeRepository) WorkspacesForUser(ctx context.Context, userID string) ([
 	return f.workspaces, nil
 }
 
-func (f fakeRepository) WorkspaceDetailForUser(ctx context.Context, userID string, workspaceID string) (WorkspaceDetail, error) {
-	return WorkspaceDetail{ManagedWorkspace: ManagedWorkspace{ID: workspaceID, Name: "Alpha Workspace", State: "running"}}, nil
-}
-
 func (f fakeRepository) AdminUsers(ctx context.Context) ([]UserView, error) {
 	return f.adminUsers, nil
 }
@@ -76,15 +72,7 @@ func (f *fakeRepository) BillingLedgerForUser(ctx context.Context, userID string
 	return f.ledger, nil
 }
 
-func (f *fakeRepository) AdminBillingLedger(ctx context.Context) ([]BillingLedgerEntryView, error) {
-	return f.ledger, nil
-}
-
 func (f *fakeRepository) SupportTicketsForUser(ctx context.Context, userID string) ([]SupportTicketView, error) {
-	return f.tickets, nil
-}
-
-func (f *fakeRepository) AdminSupportTickets(ctx context.Context) ([]SupportTicketView, error) {
 	return f.tickets, nil
 }
 

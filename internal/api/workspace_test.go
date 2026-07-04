@@ -31,32 +31,17 @@ func (f *fakeWorkspaceService) CreateWorkspace(ctx context.Context, request work
 	return f.result, nil
 }
 
-func (f *fakeWorkspaceService) StopCompute(ctx context.Context, request workspace.ActionRequest) (workspace.ActionResult, error) {
+func (f *fakeWorkspaceService) ConfigureWorkspace(ctx context.Context, request workspace.ActionRequest) (workspace.ActionResult, error) {
 	f.action = request
 	return f.actionResult, f.err
 }
 
-func (f *fakeWorkspaceService) RestartCompute(ctx context.Context, request workspace.ActionRequest) (workspace.ActionResult, error) {
+func (f *fakeWorkspaceService) SuspendWorkspace(ctx context.Context, request workspace.ActionRequest) (workspace.ActionResult, error) {
 	f.action = request
 	return f.actionResult, f.err
 }
 
-func (f *fakeWorkspaceService) DestroyCompute(ctx context.Context, request workspace.ActionRequest) (workspace.ActionResult, error) {
-	f.action = request
-	return f.actionResult, f.err
-}
-
-func (f *fakeWorkspaceService) DestroyStorage(ctx context.Context, request workspace.ActionRequest) (workspace.ActionResult, error) {
-	f.action = request
-	return f.actionResult, f.err
-}
-
-func (f *fakeWorkspaceService) CreateStorageBackup(ctx context.Context, request workspace.ActionRequest) (workspace.ActionResult, error) {
-	f.action = request
-	return f.actionResult, f.err
-}
-
-func (f *fakeWorkspaceService) RestoreStorageBackup(ctx context.Context, request workspace.ActionRequest) (workspace.ActionResult, error) {
+func (f *fakeWorkspaceService) DeleteWorkspace(ctx context.Context, request workspace.ActionRequest) (workspace.ActionResult, error) {
 	f.action = request
 	return f.actionResult, f.err
 }
@@ -159,12 +144,9 @@ func TestWorkspaceLifecycleRoutesInjectActorAndCallFacade(t *testing.T) {
 		path string
 		want string
 	}{
-		{"/api/workspaces/ws-alpha/stop-compute", "stopped_server_disk_retained"},
-		{"/api/workspaces/ws-alpha/restart-compute", "running"},
-		{"/api/workspaces/ws-alpha/destroy-compute", "server_destroyed_disk_retained"},
-		{"/api/workspaces/ws-alpha/destroy-storage", "destroyed"},
-		{"/api/workspaces/ws-alpha/create-backup", "creating_storage_backup"},
-		{"/api/workspaces/ws-alpha/restore-backup", "restoring_storage_backup"},
+		{"/api/workspaces/ws-alpha/configure", "configured"},
+		{"/api/workspaces/ws-alpha/suspend", "suspended"},
+		{"/api/workspaces/ws-alpha/delete", "deleted"},
 		{"/api/workspaces/ws-alpha/tokens/delete", "token_deleted"},
 	} {
 		t.Run(item.path, func(t *testing.T) {
