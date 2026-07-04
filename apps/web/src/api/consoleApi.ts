@@ -37,13 +37,13 @@ export type AuthSession = {
 };
 
 const fallbackState: ConsoleState = {
-  account: { id: "acct-demo", name: "Demo Lab", status: "active" },
+  account: { id: "acct-demo", name: "演示实验室", status: "active" },
   wallet: { balance: 2500, frozen: 420, totalRecharged: 5000 },
   packages: [
     {
       id: "basic",
-      name: "Basic Workspace",
-      server: "Standard CPU",
+      name: "基础工作区",
+      server: "标准 CPU",
       cpu: 2,
       memoryGb: 4,
       diskGb: 10,
@@ -52,8 +52,8 @@ const fallbackState: ConsoleState = {
     },
     {
       id: "pro",
-      name: "Pro Workspace",
-      server: "Standard CPU",
+      name: "专业工作区",
+      server: "标准 CPU",
       cpu: 8,
       memoryGb: 16,
       diskGb: 100,
@@ -61,13 +61,13 @@ const fallbackState: ConsoleState = {
       price: { computeHourly: 3.09, storageGbMonth: 0.36 },
     },
   ],
-  computePools: [{ id: "pool-standard-cpu", name: "Standard CPU", cpu: 8, memoryGb: 32, status: "available" }],
-  computeAllocations: [{ id: "cmp-alpha", name: "Alpha compute", status: "running", cpu: 4, memoryGb: 16 }],
-  storageVolumes: [{ id: "vol-alpha", name: "Alpha data volume", sizeGb: 100, status: "available" }],
+  computePools: [{ id: "pool-standard-cpu", name: "标准 CPU", cpu: 8, memoryGb: 32, status: "available" }],
+  computeAllocations: [{ id: "cmp-alpha", name: "Alpha 计算", status: "running", cpu: 4, memoryGb: 16 }],
+  storageVolumes: [{ id: "vol-alpha", name: "Alpha 数据卷", sizeGb: 100, status: "available" }],
   storageAttachments: [{ id: "att-alpha", computeId: "cmp-alpha", storageId: "vol-alpha", mountPath: "/data", status: "attached" }],
   workspaces: [{
     id: "ws-alpha",
-    name: "Alpha Lab",
+    name: "Alpha 实验室",
     state: "running",
     status: "running",
     runtimeStatus: "ready",
@@ -78,7 +78,7 @@ const fallbackState: ConsoleState = {
     attachmentId: "att-alpha",
     access: { tokenStatus: "active" },
   }],
-  manualTopups: [{ id: "topup-demo-1", targetAccountId: "acct-demo", amount: 5000, reason: "initial credit" }],
+  manualTopups: [{ id: "topup-demo-1", targetAccountId: "acct-demo", amount: 5000, reason: "初始额度" }],
   walletTransactions: [{ id: "txn-demo-1", type: "topup", accountId: "acct-demo", amount: 5000 }],
   billingLedger: [],
   resourceUsageLogs: [],
@@ -87,11 +87,11 @@ const fallbackState: ConsoleState = {
 };
 
 const fallbackManagement: ManagementState = {
-  organizations: [{ id: "org-demo", name: "Demo Organization", billingAccountId: "acct-demo", status: "active" }],
+  organizations: [{ id: "org-demo", name: "演示组织", billingAccountId: "acct-demo", status: "active" }],
   accounts: [{ id: "acct-demo", balance: 2500, frozen: 420, totalRecharged: 5000, status: "active" }],
   users: [
-    { id: "user-demo-owner", email: "owner@opl.local", name: "OPL Owner", role: "lab_owner", accountId: "acct-demo", status: "active" },
-    { id: "user-demo-admin", email: "admin@opl.local", name: "OPL Admin", role: "admin", accountId: "acct-operator", status: "active" },
+    { id: "user-demo-owner", email: "owner@opl.local", name: "OPL 所有者", role: "lab_owner", accountId: "acct-demo", status: "active" },
+    { id: "user-demo-admin", email: "admin@opl.local", name: "OPL 管理员", role: "admin", accountId: "acct-operator", status: "active" },
   ],
 };
 
@@ -143,7 +143,7 @@ function demoLogin(credentials: { email: string; password: string }, error: unkn
       user: {
         id: "user-demo-admin",
         email: "admin@opl.local",
-        name: "OPL Admin",
+        name: "OPL 管理员",
         role: "admin",
         accountId: "acct-operator",
       },
@@ -157,7 +157,7 @@ function demoLogin(credentials: { email: string; password: string }, error: unkn
     user: {
       id: "user-demo-owner",
       email: "owner@opl.local",
-      name: "OPL Owner",
+      name: "OPL 所有者",
       role: "lab_owner",
       accountId: "acct-demo",
     },
@@ -174,7 +174,7 @@ function demoOperatorLogin(credentials: { email: string; password: string; opera
     user: {
       id: "user-demo-admin",
       email: "admin@opl.local",
-      name: "OPL Admin",
+      name: "OPL 管理员",
       role: "admin",
       accountId: "acct-operator",
     },
@@ -206,6 +206,6 @@ export function loadOperatorSummary() {
 
 export function loadTickets() {
   return getJSON<SupportTickets>("/api/support/tickets", {
-    tickets: [{ id: "ticket-demo-1", title: "Workspace launch question", category: "workspace", status: "open" }],
+    tickets: [{ id: "ticket-demo-1", title: "工作区开通问题", category: "workspace", status: "open" }],
   });
 }

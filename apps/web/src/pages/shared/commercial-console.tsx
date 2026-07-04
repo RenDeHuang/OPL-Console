@@ -1,8 +1,28 @@
-import type { ReactNode } from "react";
+import { Component } from "react";
+import type { ErrorInfo, ReactNode } from "react";
 import { PageContainer, ProTable } from "@ant-design/pro-components";
-import { Button, Empty, List, Space, Tag, Typography } from "antd";
+import { Button, Empty, List, Result, Space, Tag, Typography } from "antd";
 
 type Tone = "good" | "warn" | "danger" | "info" | "neutral";
+
+class LocalizedTableErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; errorInfo: string }> {
+  state = { hasError: false, errorInfo: "" };
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, errorInfo: error.message };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error(error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <Result status="error" title="组件加载失败" subTitle="请刷新页面或联系管理员。" extra={this.state.errorInfo} />;
+    }
+    return this.props.children;
+  }
+}
 
 function toneClass(tone: Tone = "neutral") {
   return ["good", "warn", "danger", "info"].includes(tone) ? tone : "neutral";
@@ -46,7 +66,7 @@ export function ConsoleSurface({ title, eyebrow, subtitle, extra, children, comp
 
 export function MetricStrip({ items = [] }: { items: Array<{ label: ReactNode; value: ReactNode; caption?: ReactNode; icon?: ReactNode; tone?: Tone }> }) {
   return (
-    <section className="metricStrip" aria-label="Console metrics">
+    <section className="metricStrip" aria-label="控制台指标">
       {items.map((item) => (
         <article className={`metricTile ${toneClass(item.tone)}`} key={String(item.label)}>
           <div className="metricTopline">
@@ -164,6 +184,7 @@ export function ObjectTable({ rowKey = "id", data = [], columns = [], emptyText 
       options={false}
       pagination={false}
       size="small"
+      ErrorBoundary={LocalizedTableErrorBoundary}
       scroll={{ x: "max-content" }}
       dataSource={data}
       columns={columns}

@@ -6,7 +6,7 @@ func demoConsoleState() map[string]any {
 	return map[string]any{
 		"account": map[string]any{
 			"id":     "acct-demo",
-			"name":   "Demo Lab",
+			"name":   "演示实验室",
 			"status": "active",
 		},
 		"wallet": map[string]any{
@@ -17,8 +17,8 @@ func demoConsoleState() map[string]any {
 		"packages": []map[string]any{
 			{
 				"id":        "basic",
-				"name":      "Basic Workspace",
-				"server":    "Standard CPU",
+				"name":      "基础工作区",
+				"server":    "标准 CPU",
 				"cpu":       2,
 				"memoryGb":  4,
 				"diskGb":    10,
@@ -27,8 +27,8 @@ func demoConsoleState() map[string]any {
 			},
 			{
 				"id":        "pro",
-				"name":      "Pro Workspace",
-				"server":    "Standard CPU",
+				"name":      "专业工作区",
+				"server":    "标准 CPU",
 				"cpu":       8,
 				"memoryGb":  16,
 				"diskGb":    100,
@@ -41,7 +41,7 @@ func demoConsoleState() map[string]any {
 		"storageVolumes": []map[string]any{
 			{
 				"id":        "vol-alpha",
-				"name":      "Alpha data volume",
+				"name":      "Alpha 数据卷",
 				"sizeGb":    100,
 				"status":    "available",
 				"accountId": "acct-demo",
@@ -59,7 +59,7 @@ func demoConsoleState() map[string]any {
 		"workspaces": []map[string]any{
 			{
 				"id":                  "ws-alpha",
-				"name":                "Alpha Lab",
+				"name":                "Alpha 实验室",
 				"state":               "running",
 				"status":              "running",
 				"runtimeStatus":       "ready",
@@ -75,7 +75,7 @@ func demoConsoleState() map[string]any {
 			},
 		},
 		"manualTopups": []map[string]any{
-			{"id": "topup-demo-1", "targetAccountId": "acct-demo", "amount": 5000, "reason": "initial credit"},
+			{"id": "topup-demo-1", "targetAccountId": "acct-demo", "amount": 5000, "reason": "初始额度"},
 		},
 		"walletTransactions": []map[string]any{
 			{"id": "txn-demo-1", "type": "topup", "accountId": "acct-demo", "amount": 5000},
@@ -94,7 +94,7 @@ func demoComputePools() []map[string]any {
 	return []map[string]any{
 		{
 			"id":        "pool-standard-cpu",
-			"name":      "Standard CPU",
+			"name":      "标准 CPU",
 			"cpu":       8,
 			"memoryGb":  32,
 			"status":    "available",
@@ -108,7 +108,7 @@ func demoComputeAllocations() []map[string]any {
 	return []map[string]any{
 		{
 			"id":        "cmp-alpha",
-			"name":      "Alpha compute",
+			"name":      "Alpha 计算",
 			"poolId":    "pool-standard-cpu",
 			"status":    "running",
 			"cpu":       4,
@@ -131,14 +131,14 @@ func demoOperatorSummary() map[string]any {
 func demoManagementState() map[string]any {
 	return map[string]any{
 		"organizations": []map[string]any{
-			{"id": "org-demo", "name": "Demo Organization", "billingAccountId": "acct-demo", "status": "active"},
+			{"id": "org-demo", "name": "演示组织", "billingAccountId": "acct-demo", "status": "active"},
 		},
 		"accounts": []map[string]any{
 			{"id": "acct-demo", "balance": 2500, "frozen": 420, "totalRecharged": 5000, "status": "active"},
 		},
 		"users": []map[string]any{
-			{"id": "user-demo-owner", "email": "owner@opl.local", "name": "OPL Owner", "role": "lab_owner", "accountId": "acct-demo", "status": "active"},
-			{"id": "user-demo-admin", "email": "admin@opl.local", "name": "OPL Admin", "role": "admin", "accountId": "acct-operator", "status": "active"},
+			{"id": "user-demo-owner", "email": "owner@opl.local", "name": "OPL 所有者", "role": "lab_owner", "accountId": "acct-demo", "status": "active"},
+			{"id": "user-demo-admin", "email": "admin@opl.local", "name": "OPL 管理员", "role": "admin", "accountId": "acct-operator", "status": "active"},
 		},
 	}
 }

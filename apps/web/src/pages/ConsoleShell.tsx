@@ -55,7 +55,7 @@ function buildMenu(isAdmin: boolean) {
   }));
   const admin = isAdmin ? [{
     path: "/admin",
-    name: "Admin",
+    name: "管理",
     icon: <ShieldCheck size={17} />,
     children: adminMenuRoutes.map((route) => ({
       path: route.path,
@@ -99,11 +99,11 @@ function ConsoleShell({ route }: { route: OplRoute }) {
     tickets: tickets.data,
   };
 
-  if (!state.data) return <div className="loading">Loading OPL Console...</div>;
+  if (!state.data) return <div className="loading">正在加载 OPL 控制台...</div>;
 
   return (
     <ProLayout
-      title="OPL Console"
+      title="OPL 控制台"
       logo={<div className="proLogo">OPL</div>}
       location={{ pathname: location.pathname }}
       layout="mix"
@@ -122,7 +122,7 @@ function ConsoleShell({ route }: { route: OplRoute }) {
         </a>
       )}
       actionsRender={() => [
-        <Tag color={isAdmin ? "purple" : "blue"} key="role">{isAdmin ? "Admin" : "Lab Owner"}</Tag>,
+        <Tag color={isAdmin ? "purple" : "blue"} key="role">{isAdmin ? "管理员" : "实验室所有者"}</Tag>,
         <Button key="logout" icon={<LogOut size={15} />} onClick={() => navigate("/")}>退出</Button>,
       ]}
       avatarProps={{

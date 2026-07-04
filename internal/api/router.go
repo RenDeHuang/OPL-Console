@@ -69,7 +69,7 @@ func NewRouter(deps Dependencies) http.Handler {
 				"user": map[string]any{
 					"id":        "user-demo-admin",
 					"email":     "admin@opl.local",
-					"name":      "OPL Admin",
+					"name":      "OPL 管理员",
 					"role":      "admin",
 					"accountId": "acct-operator",
 				},
@@ -85,7 +85,7 @@ func NewRouter(deps Dependencies) http.Handler {
 			"user": map[string]any{
 				"id":        "user-demo-owner",
 				"email":     email,
-				"name":      "OPL Owner",
+				"name":      "OPL 所有者",
 				"role":      "lab_owner",
 				"accountId": "acct-demo",
 			},
@@ -105,7 +105,7 @@ func NewRouter(deps Dependencies) http.Handler {
 			"user": map[string]any{
 				"id":        "user-demo-admin",
 				"email":     "admin@opl.local",
-				"name":      "OPL Admin",
+				"name":      "OPL 管理员",
 				"role":      "admin",
 				"accountId": "acct-operator",
 			},
@@ -120,7 +120,7 @@ func NewRouter(deps Dependencies) http.Handler {
 			"user": map[string]any{
 				"id":        "user-demo-owner",
 				"email":     "owner@opl.local",
-				"name":      "OPL Owner",
+				"name":      "OPL 所有者",
 				"role":      "lab_owner",
 				"accountId": "acct-demo",
 			},
@@ -149,7 +149,7 @@ func NewRouter(deps Dependencies) http.Handler {
 	router.Get("/api/compute-allocations/{id}", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"computeAllocation": map[string]any{
 			"id":        chi.URLParam(r, "id"),
-			"name":      "Detached Compute",
+			"name":      "独立计算",
 			"status":    "running",
 			"accountId": "acct-demo",
 		}})
@@ -192,7 +192,7 @@ func NewRouter(deps Dependencies) http.Handler {
 		writeJSON(w, http.StatusOK, map[string]any{"tickets": []map[string]any{
 			{
 				"id":          "ticket-demo-1",
-				"title":       "Workspace launch question",
+				"title":       "工作区开通问题",
 				"category":    "workspace",
 				"status":      "open",
 				"createdAt":   time.Now().UTC().Format(time.RFC3339),

@@ -11,12 +11,12 @@ export function HomePage() {
       <header className="publicNav">
         <a className="wordmark" href="/">
           <span>OPL</span>
-          <strong>OPL Console</strong>
+          <strong>OPL 控制台</strong>
         </a>
         <nav className="publicLinks">
-          <a href="/console/workspaces">Workspace</a>
-          <a href="/console/billing">Billing</a>
-          <a href="/console/support">Support</a>
+          <a href="/console/workspaces">工作区</a>
+          <a href="/console/billing">计费</a>
+          <a href="/console/support">支持</a>
           <a className="navButton" href={target}>登录</a>
         </nav>
       </header>
@@ -24,28 +24,28 @@ export function HomePage() {
       <main>
         <section className="publicConsole">
           <div className="publicConsoleCopy">
-            <p className="eyebrow">OPL Console</p>
-            <h1>OPL Console</h1>
-            <p>开通 Workspace，分发访问 URL，按计算、存储和 Gateway 请求扣费。</p>
+            <p className="eyebrow">OPL 控制台</p>
+            <h1>OPL 控制台</h1>
+            <p>开通工作区，分发访问链接，按计算、存储和网关请求扣费。</p>
             <a className="primaryLink" href={target}>进入控制台 <ArrowRight size={16} /></a>
           </div>
 
-          <div className="publicConsolePanel" aria-label="OPL Console product surface">
+          <div className="publicConsolePanel" aria-label="OPL 控制台产品界面">
             <div className="publicPanelTop">
-              <strong>Business chain</strong>
-              <span>Live Console</span>
+              <strong>业务链路</strong>
+              <span>控制台</span>
             </div>
             <div className="publicMetrics">
-              <PublicMetric icon={<WalletCards />} label="Wallet" value="Balance + holds" />
-              <PublicMetric icon={<Server />} label="Workspace" value="Compute + storage" />
-              <PublicMetric icon={<KeyRound />} label="URL" value="Scoped access" />
-              <PublicMetric icon={<Database />} label="Ledger" value="Usage evidence" />
+              <PublicMetric icon={<WalletCards />} label="钱包" value="余额与冻结" />
+              <PublicMetric icon={<Server />} label="工作区" value="计算与存储" />
+              <PublicMetric icon={<KeyRound />} label="访问链接" value="范围化访问" />
+              <PublicMetric icon={<Database />} label="账本" value="用量凭证" />
             </div>
             <div className="publicFlow">
-              <span>Top up</span>
-              <span>Create</span>
-              <span>Share URL</span>
-              <span>Meter</span>
+              <span>充值</span>
+              <span>创建</span>
+              <span>分发链接</span>
+              <span>计量</span>
             </div>
           </div>
         </section>
@@ -53,17 +53,17 @@ export function HomePage() {
         <section className="homeBand">
           <article>
             <ShieldCheck />
-            <h2>Lab Owner</h2>
-            <p>余额、Workspace、URL、工单。</p>
+            <h2>实验室所有者</h2>
+            <p>余额、工作区、访问链接、工单。</p>
           </article>
           <article>
             <WalletCards />
-            <h2>Billing</h2>
+            <h2>计费</h2>
             <p>充值、冻结、小时扣费。</p>
           </article>
           <article>
             <Headphones />
-            <h2>Admin</h2>
+            <h2>管理</h2>
             <p>用户、充值、运行证据。</p>
           </article>
         </section>
@@ -96,12 +96,12 @@ export function LoginPage({ route }: { route?: OplRoute }) {
   if (routeMode !== "/login" && routeMode !== "/logout") {
     return (
       <div className="loginShell">
-        <a className="backLink" href="/"><ArrowLeft size={16} /> OPL Console</a>
+        <a className="backLink" href="/"><ArrowLeft size={16} /> OPL 控制台</a>
         <main className="loginPanel compactAuth">
           <div className="loginBrand">
             <div className="brandIcon">OPL</div>
             <div>
-              <p className="eyebrow">OPL Console</p>
+              <p className="eyebrow">OPL 控制台</p>
               <h1>无法访问</h1>
             </div>
           </div>
@@ -117,12 +117,12 @@ export function LoginPage({ route }: { route?: OplRoute }) {
 
   return (
     <div className="loginShell">
-      <a className="backLink" href="/"><ArrowLeft size={16} /> OPL Console</a>
+      <a className="backLink" href="/"><ArrowLeft size={16} /> OPL 控制台</a>
       <main className="loginPanel">
         <div className="loginBrand">
           <div className="brandIcon">OPL</div>
           <div>
-            <p className="eyebrow">OPL Console</p>
+            <p className="eyebrow">OPL 控制台</p>
             <h1>登录</h1>
           </div>
         </div>
@@ -142,7 +142,7 @@ export function LoginPage({ route }: { route?: OplRoute }) {
         </form>
         <div className="securityNote">
           <ShieldCheck size={16} />
-          <span>Secure cookie + CSRF</span>
+          <span>安全 Cookie 与 CSRF 防护</span>
         </div>
       </main>
     </div>
@@ -161,14 +161,14 @@ function errorLabel(value: string) {
 export function ErrorPage({ code, title }: { code: string; title: string }) {
   return (
     <div className="loginShell">
-      <a className="backLink" href="/"><ArrowLeft size={16} /> OPL Console</a>
+      <a className="backLink" href="/"><ArrowLeft size={16} /> OPL 控制台</a>
       <main className="loginPanel compactAuth">
         <p className="eyebrow">{code}</p>
         <div className="emptyState">
           <strong>{title}</strong>
           <span>请返回已开通的 Console 页面。</span>
         </div>
-        <a className="primaryLink" href="/console/overview">返回 Console</a>
+        <a className="primaryLink" href="/console/overview">返回控制台</a>
       </main>
     </div>
   );
