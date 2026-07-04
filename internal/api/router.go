@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/RenDeHuang/opl-console/internal/fabric"
+	"github.com/RenDeHuang/opl-console/internal/ledger"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -13,12 +15,15 @@ type Router interface {
 }
 
 type Dependencies struct {
-	RuntimeReady      func() Readiness
-	ProductionReady   func() Readiness
-	Auth              AuthService
-	Governance        GovernanceService
-	Workspace         WorkspaceService
-	SessionCookieName string
+	RuntimeReady         func() Readiness
+	ProductionReady      func() Readiness
+	Auth                 AuthService
+	Governance           GovernanceService
+	Workspace            WorkspaceService
+	Fabric               fabric.Port
+	Ledger               ledger.Port
+	SessionCookieName    string
+	OperatorSummaryToken string
 }
 
 func NewRouter(deps Dependencies) http.Handler {
@@ -47,6 +52,10 @@ func NewRouter(deps Dependencies) http.Handler {
 	mountAuthRoutes(router, deps)
 	mountGovernanceRoutes(router, deps)
 	mountWorkspaceRoutes(router, deps)
+	mountFabricRoutes(router, deps)
+	mountLedgerRoutes(router, deps)
+	mountBillingRoutes(router, deps)
+	mountRuntimeMutationRoutes(router, deps)
 	return router
 }
 

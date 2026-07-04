@@ -139,45 +139,6 @@ func TestWorkspaceHandoffValidatesTokenWithoutSession(t *testing.T) {
 	}
 }
 
-func TestWorkspaceLifecycleRoutesInjectActorAndCallFacade(t *testing.T) {
-	for _, item := range []struct {
-		path string
-		want string
-	}{
-		{"/api/workspaces/ws-alpha/configure", "configured"},
-		{"/api/workspaces/ws-alpha/suspend", "suspended"},
-		{"/api/workspaces/ws-alpha/delete", "deleted"},
-		{"/api/workspaces/ws-alpha/tokens/delete", "token_deleted"},
-	} {
-		t.Run(item.path, func(t *testing.T) {
-			workspaceService := &fakeWorkspaceService{actionResult: workspace.ActionResult{WorkspaceID: "ws-alpha", State: item.want}}
-			handler := NewRouter(Dependencies{
-				Auth: &fakeAuthService{session: auth.Session{
-					Token:     "session-token",
-					CSRFToken: "csrf-token",
-					ExpiresAt: time.Now().Add(time.Hour),
-					User:      auth.User{ID: "usr-owner", Email: "owner@opl.local", Role: auth.RoleOwner, Status: auth.StatusActive},
-				}},
-				SessionCookieName: "opl_session",
-				Workspace:         workspaceService,
-			})
-			request := httptest.NewRequest(http.MethodPost, item.path, strings.NewReader(`{}`))
-			request.AddCookie(&http.Cookie{Name: "opl_session", Value: "session-token"})
-			request.Header.Set("x-opl-csrf-token", "csrf-token")
-			response := httptest.NewRecorder()
-
-			handler.ServeHTTP(response, request)
-
-			if response.Code != http.StatusOK {
-				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-			}
-			if workspaceService.action.WorkspaceID != "ws-alpha" || workspaceService.action.ActorUserID != "usr-owner" {
-				t.Fatalf("action = %#v", workspaceService.action)
-			}
-		})
-	}
-}
-
 func TestResetWorkspaceTokenRouteReadsToken(t *testing.T) {
 	workspaceService := &fakeWorkspaceService{actionResult: workspace.ActionResult{WorkspaceID: "ws-alpha", State: "ready", URL: "https://workspace.example/ws-alpha"}}
 	handler := NewRouter(Dependencies{
@@ -190,7 +151,7 @@ func TestResetWorkspaceTokenRouteReadsToken(t *testing.T) {
 		SessionCookieName: "opl_session",
 		Workspace:         workspaceService,
 	})
-	request := httptest.NewRequest(http.MethodPost, "/api/workspaces/ws-alpha/tokens/reset", strings.NewReader(`{"token":"new-token"}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/workspaces/reset-token", strings.NewReader(`{"workspaceId":"ws-alpha","token":"new-token"}`))
 	request.AddCookie(&http.Cookie{Name: "opl_session", Value: "session-token"})
 	request.Header.Set("x-opl-csrf-token", "csrf-token")
 	response := httptest.NewRecorder()
@@ -202,5 +163,52 @@ func TestResetWorkspaceTokenRouteReadsToken(t *testing.T) {
 	}
 	if workspaceService.token.WorkspaceID != "ws-alpha" || workspaceService.token.Token != "new-token" || workspaceService.token.ActorUserID != "usr-owner" {
 		t.Fatalf("token request = %#v", workspaceService.token)
+	}
+}
+
+func TestDeleteWorkspaceTokenRouteReadsWorkspaceIDFromBody(t *testing.T) {
+	workspaceService := &fakeWorkspaceService{actionResult: workspace.ActionResult{WorkspaceID: "ws-alpha", State: "token_deleted"}}
+	handler := NewRouter(Dependencies{
+		Auth: &fakeAuthService{session: auth.Session{
+			Token:     "session-token",
+			CSRFToken: "csrf-token",
+			ExpiresAt: time.Now().Add(time.Hour),
+			User:      auth.User{ID: "usr-owner", Email: "owner@opl.local", Role: auth.RoleOwner, Status: auth.StatusActive},
+		}},
+		SessionCookieName: "opl_session",
+		Workspace:         workspaceService,
+	})
+	request := httptest.NewRequest(http.MethodPost, "/api/workspaces/delete-token", strings.NewReader(`{"workspaceId":"ws-alpha"}`))
+	request.AddCookie(&http.Cookie{Name: "opl_session", Value: "session-token"})
+	request.Header.Set("x-opl-csrf-token", "csrf-token")
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if workspaceService.action.WorkspaceID != "ws-alpha" || workspaceService.action.ActorUserID != "usr-owner" {
+		t.Fatalf("action = %#v", workspaceService.action)
+	}
+}
+
+func TestOldWorkspaceCompatibilityRoutesAreNotMounted(t *testing.T) {
+	handler := NewRouter(Dependencies{})
+	for _, path := range []string{
+		"/api/workspaces/ws-alpha/configure",
+		"/api/workspaces/ws-alpha/suspend",
+		"/api/workspaces/ws-alpha/delete",
+		"/api/workspaces/ws-alpha/tokens/reset",
+		"/api/workspaces/ws-alpha/tokens/delete",
+	} {
+		t.Run(path, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, path, nil)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusNotFound {
+				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+			}
+		})
 	}
 }

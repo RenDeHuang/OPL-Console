@@ -100,6 +100,23 @@ export type ApprovalView = {
   reason?: string;
   decisionNote?: string;
 };
+export type ConsoleState = {
+  me: Me;
+  packages: WorkspacePackage[];
+  workspaces: ManagedWorkspace[];
+  wallet: WalletView;
+  ledger: BillingLedgerEntry[];
+  tickets: SupportTicket[];
+};
+export type ManagementState = {
+  users: UserView[];
+  organizations: OrganizationView[];
+  teams: TeamView[];
+  roles: RoleView[];
+  resources: ManagedResourceView[];
+  policies: PolicyView[];
+  approvals: ApprovalView[];
+};
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const csrfToken = typeof window === "undefined" ? "" : window.localStorage.getItem("opl_csrf_token") || "";
@@ -119,7 +136,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(`request_failed:${path}:${response.status}`);
   }
   const payload = await response.json() as T;
-  if (path === "/api/auth/login" || path === "/api/auth/session") {
+  if (path === "/api/auth/login" || path === "/api/auth/operator-login" || path === "/api/auth/me") {
     const maybeSession = payload as Session;
     if (maybeSession.csrfToken && typeof window !== "undefined") {
       window.localStorage.setItem("opl_csrf_token", maybeSession.csrfToken);
@@ -135,58 +152,51 @@ export const api = {
   healthz: () => request<Healthz>("/api/healthz"),
   runtimeReadiness: () => request<Readiness>("/api/runtime/readiness"),
   productionReadiness: () => request<Readiness>("/api/production/readiness"),
+  state: () => request<ConsoleState>("/api/state"),
+  managementState: () => request<ManagementState>("/api/management/state"),
   login: (email: string, password: string) =>
     request<Session>("/api/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password })
     }),
-  session: () => request<Session>("/api/auth/session"),
+  operatorLogin: (operatorToken: string) =>
+    request<Session>("/api/auth/operator-login", {
+      method: "POST",
+      body: JSON.stringify({ operatorToken })
+    }),
+  session: () => request<Session>("/api/auth/me"),
   logout: () => request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
-  me: () => request<Me>("/api/me"),
-  packages: () => request<WorkspacePackage[]>("/api/packages"),
-  workspaces: () => request<ManagedWorkspace[]>("/api/workspaces"),
+  me: async () => (await api.state()).me,
+  packages: async () => (await api.state()).packages,
+  workspaces: async () => (await api.state()).workspaces,
   createWorkspace: (payload: CreateWorkspacePayload) =>
     request<CreateWorkspaceResult>("/api/workspaces", {
       method: "POST",
       body: JSON.stringify(payload)
     }),
-  configureWorkspace: (id: string) => request<CreateWorkspaceResult>(`/api/workspaces/${id}/configure`, { method: "POST" }),
-  suspendWorkspace: (id: string) => request<CreateWorkspaceResult>(`/api/workspaces/${id}/suspend`, { method: "POST" }),
-  deleteWorkspace: (id: string) => request<CreateWorkspaceResult>(`/api/workspaces/${id}/delete`, { method: "POST" }),
   resetWorkspaceToken: (id: string, token: string) =>
-    request<CreateWorkspaceResult>(`/api/workspaces/${id}/tokens/reset`, {
+    request<CreateWorkspaceResult>("/api/workspaces/reset-token", {
       method: "POST",
-      body: JSON.stringify({ token })
+      body: JSON.stringify({ workspaceId: id, token })
     }),
-  deleteWorkspaceToken: (id: string) => request<CreateWorkspaceResult>(`/api/workspaces/${id}/tokens/delete`, { method: "POST" }),
-  wallet: () => request<WalletView>("/api/billing/wallet"),
-  billingLedger: () => request<BillingLedgerEntry[]>("/api/billing/ledger"),
-  supportTickets: () => request<SupportTicket[]>("/api/support/tickets"),
+  deleteWorkspaceToken: (id: string) =>
+    request<CreateWorkspaceResult>("/api/workspaces/delete-token", {
+      method: "POST",
+      body: JSON.stringify({ workspaceId: id })
+    }),
+  wallet: async () => (await api.state()).wallet,
+  billingLedger: async () => (await api.state()).ledger,
+  supportTickets: async () => (await request<{ tickets: SupportTicket[] }>("/api/support/tickets")).tickets,
   createSupportTicket: (payload: CreateSupportTicketPayload) =>
     request<SupportTicket>("/api/support/tickets", {
       method: "POST",
       body: JSON.stringify(payload)
     }),
-  adminUsers: () => request<UserView[]>("/api/admin/users"),
-  adminOrganizations: () => request<OrganizationView[]>("/api/admin/organizations"),
-  adminTeams: () => request<TeamView[]>("/api/admin/teams"),
-  adminRoles: () => request<RoleView[]>("/api/admin/roles"),
-  adminResources: () => request<ManagedResourceView[]>("/api/admin/resources"),
-  adminPolicies: () => request<PolicyView[]>("/api/admin/policies"),
-  createPolicy: (payload: CreatePolicyPayload) =>
-    request<PolicyView>("/api/admin/policies", {
-      method: "POST",
-      body: JSON.stringify(payload)
-    }),
-  adminApprovals: () => request<ApprovalView[]>("/api/admin/approvals"),
-  approveApproval: (id: string, decisionNote: string) =>
-    request<ApprovalView>(`/api/admin/approvals/${id}/approve`, {
-      method: "POST",
-      body: JSON.stringify({ decisionNote })
-    }),
-  rejectApproval: (id: string, decisionNote: string) =>
-    request<ApprovalView>(`/api/admin/approvals/${id}/reject`, {
-      method: "POST",
-      body: JSON.stringify({ decisionNote })
-    })
+  adminUsers: async () => (await api.managementState()).users,
+  adminOrganizations: async () => (await api.managementState()).organizations,
+  adminTeams: async () => (await api.managementState()).teams,
+  adminRoles: async () => (await api.managementState()).roles,
+  adminResources: async () => (await api.managementState()).resources,
+  adminPolicies: async () => (await api.managementState()).policies,
+  adminApprovals: async () => (await api.managementState()).approvals
 };

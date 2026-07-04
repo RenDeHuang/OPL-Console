@@ -19,6 +19,7 @@ type Config struct {
 	FabricProvider        string
 	SessionCookieName     string
 	ConsoleUsersJSON      string
+	OperatorSummaryToken  string
 }
 
 func Load() (Config, error) {
@@ -35,6 +36,7 @@ func Load() (Config, error) {
 		FabricProvider:        env("OPL_FABRIC_PROVIDER", "local"),
 		SessionCookieName:     env("OPL_SESSION_COOKIE_NAME", "opl_console_session"),
 		ConsoleUsersJSON:      env("OPL_CONSOLE_USERS_JSON", ""),
+		OperatorSummaryToken:  env("OPL_OPERATOR_SUMMARY_TOKEN", ""),
 	}
 	if cfg.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("DATABASE_URL is required")

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { HardDrive, KeyRound, Pause, Plus, Route, Server, Settings, Trash2 } from "lucide-react";
+import { HardDrive, KeyRound, Plus, Route, Server, Settings } from "lucide-react";
 import { api } from "../api/client";
 import { fen, packageText, providerText, statusText } from "../format";
 
@@ -16,7 +16,6 @@ export function WorkspacesPage() {
   const [name, setName] = useState("实验工作空间");
   const [workspaceId, setWorkspaceId] = useState(`ws-${Date.now().toString(36)}`);
   const [packageId, setPackageId] = useState("");
-  const [deleteConfirm, setDeleteConfirm] = useState("");
   const selectedPackageId = packageId || packages.data?.[0]?.id || "";
   const selectedPackage = useMemo(
     () => (packages.data ?? []).find((item) => item.id === selectedPackageId),
@@ -42,10 +41,7 @@ export function WorkspacesPage() {
     }
   });
   const lifecycle = useMutation({
-    mutationFn: ({ id, action }: { id: string; action: "configure" | "suspend" | "delete" | "reset-token" | "delete-token" }) => {
-      if (action === "configure") return api.configureWorkspace(id);
-      if (action === "suspend") return api.suspendWorkspace(id);
-      if (action === "delete") return api.deleteWorkspace(id);
+    mutationFn: ({ id, action }: { id: string; action: "reset-token" | "delete-token" }) => {
       if (action === "reset-token") return api.resetWorkspaceToken(id, randomToken());
       return api.deleteWorkspaceToken(id);
     },
@@ -62,7 +58,7 @@ export function WorkspacesPage() {
       <div className="page-header">
         <div>
           <h1>托管工作空间</h1>
-          <p>开通、配置、暂停和删除组织托管的工作空间。</p>
+          <p>开通工作空间，管理访问地址和运行状态。</p>
         </div>
         <span className="status ok">{workspaceCount} 个</span>
       </div>
@@ -126,14 +122,6 @@ export function WorkspacesPage() {
               <span>{statusText(workspace.policy)}</span>
               <span>{workspace.url ? <a href={workspace.url}>打开</a> : workspace.provider ? providerText(workspace.provider) : "待生成"}</span>
               <div className="button-row">
-                <button type="button" title="配置" disabled={lifecycle.isPending} onClick={() => lifecycle.mutate({ id: workspace.id, action: "configure" })}>
-                  <Settings size={16} />
-                  配置
-                </button>
-                <button type="button" title="暂停访问" disabled={lifecycle.isPending} onClick={() => lifecycle.mutate({ id: workspace.id, action: "suspend" })}>
-                  <Pause size={16} />
-                  暂停
-                </button>
                 <button type="button" title="重置访问地址" disabled={lifecycle.isPending} onClick={() => lifecycle.mutate({ id: workspace.id, action: "reset-token" })}>
                   <KeyRound size={16} />
                   重置地址
@@ -142,25 +130,7 @@ export function WorkspacesPage() {
                   <KeyRound size={16} />
                   停用地址
                 </button>
-                <button
-                  className="danger"
-                  type="button"
-                  title="删除运行资源"
-                  disabled={lifecycle.isPending}
-                  onClick={() => {
-                    if (deleteConfirm === workspace.id) {
-                      lifecycle.mutate({ id: workspace.id, action: "delete" });
-                      setDeleteConfirm("");
-                      return;
-                    }
-                    setDeleteConfirm(workspace.id);
-                  }}
-                >
-                  <Trash2 size={16} />
-                  {deleteConfirm === workspace.id ? "确认删除" : "删除"}
-                </button>
               </div>
-              {deleteConfirm === workspace.id ? <p className="danger-note">再次点击确认删除。此操作会销毁计算、路由和存储。</p> : null}
             </div>
           ))}
           {workspaces.data?.length === 0 ? <p className="muted">还没有托管工作空间。</p> : null}

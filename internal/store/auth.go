@@ -36,6 +36,21 @@ func (s *AuthStore) FindUserByEmail(ctx context.Context, email string) (auth.Use
 	return user, err
 }
 
+func (s *AuthStore) FindFirstAdmin(ctx context.Context) (auth.UserWithPassword, error) {
+	var user auth.UserWithPassword
+	err := s.pool.QueryRow(ctx, `
+		SELECT id, email, role, status, password_hash
+		FROM users
+		WHERE role = 'admin' AND status = 'active'
+		ORDER BY created_at ASC
+		LIMIT 1
+	`).Scan(&user.ID, &user.Email, &user.Role, &user.Status, &user.PasswordHash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return auth.UserWithPassword{}, auth.ErrInvalidCredentials
+	}
+	return user, err
+}
+
 func (s *AuthStore) CreateSession(ctx context.Context, record auth.SessionRecord) error {
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO sessions (id, user_id, csrf_token_hash, expires_at)

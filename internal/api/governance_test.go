@@ -130,18 +130,23 @@ func TestOwnerGovernanceRoutesRequireActiveOwnerSession(t *testing.T) {
 		},
 	})
 
-	for _, path := range []string{"/api/me", "/api/packages", "/api/workspaces"} {
-		t.Run(path, func(t *testing.T) {
-			request := httptest.NewRequest(http.MethodGet, path, nil)
-			request.AddCookie(&http.Cookie{Name: "opl_session", Value: "session-token"})
-			response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/state", nil)
+	request.AddCookie(&http.Cookie{Name: "opl_session", Value: "session-token"})
+	response := httptest.NewRecorder()
 
-			handler.ServeHTTP(response, request)
+	handler.ServeHTTP(response, request)
 
-			if response.Code != http.StatusOK {
-				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-			}
-		})
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var payload map[string]json.RawMessage
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode state: %v", err)
+	}
+	for _, key := range []string{"me", "packages", "workspaces", "wallet", "ledger", "tickets"} {
+		if len(payload[key]) == 0 {
+			t.Fatalf("state missing %s: %#v", key, payload)
+		}
 	}
 }
 
@@ -151,7 +156,7 @@ func TestOwnerGovernanceRoutesRejectMissingSession(t *testing.T) {
 		SessionCookieName: "opl_session",
 		Governance:        &fakeGovernanceService{},
 	})
-	request := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/state", nil)
 	response := httptest.NewRecorder()
 
 	handler.ServeHTTP(response, request)
@@ -161,7 +166,7 @@ func TestOwnerGovernanceRoutesRejectMissingSession(t *testing.T) {
 	}
 }
 
-func TestAdminGovernanceRoutesRequireAdmin(t *testing.T) {
+func TestManagementStateRequiresAdmin(t *testing.T) {
 	tests := []struct {
 		name string
 		user auth.User
@@ -192,7 +197,7 @@ func TestAdminGovernanceRoutesRequireAdmin(t *testing.T) {
 					adminUsers: []console.UserView{{ID: "usr-admin", Email: "admin@opl.local", Role: "admin", Status: "active"}},
 				},
 			})
-			request := httptest.NewRequest(http.MethodGet, "/api/admin/users", nil)
+			request := httptest.NewRequest(http.MethodGet, "/api/management/state", nil)
 			request.AddCookie(&http.Cookie{Name: "opl_session", Value: "session-token"})
 			response := httptest.NewRecorder()
 
@@ -202,12 +207,12 @@ func TestAdminGovernanceRoutesRequireAdmin(t *testing.T) {
 				t.Fatalf("status = %d, want %d, body = %s", response.Code, tt.want, response.Body.String())
 			}
 			if response.Code == http.StatusOK {
-				var users []console.UserView
-				if err := json.NewDecoder(response.Body).Decode(&users); err != nil {
-					t.Fatalf("decode users: %v", err)
+				var payload map[string]json.RawMessage
+				if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+					t.Fatalf("decode management state: %v", err)
 				}
-				if len(users) != 1 {
-					t.Fatalf("users = %#v", users)
+				if len(payload["users"]) == 0 {
+					t.Fatalf("users missing: %#v", payload)
 				}
 			}
 		})
@@ -231,18 +236,27 @@ func TestOwnerBillingAndSupportRoutes(t *testing.T) {
 		Governance:        governance,
 	})
 
-	for _, path := range []string{"/api/billing/wallet", "/api/billing/ledger", "/api/support/tickets"} {
-		t.Run(path, func(t *testing.T) {
-			request := httptest.NewRequest(http.MethodGet, path, nil)
-			request.AddCookie(&http.Cookie{Name: "opl_session", Value: "session-token"})
-			response := httptest.NewRecorder()
+	requestState := httptest.NewRequest(http.MethodGet, "/api/state", nil)
+	requestState.AddCookie(&http.Cookie{Name: "opl_session", Value: "session-token"})
+	stateResponse := httptest.NewRecorder()
+	handler.ServeHTTP(stateResponse, requestState)
+	if stateResponse.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", stateResponse.Code, stateResponse.Body.String())
+	}
 
-			handler.ServeHTTP(response, request)
-
-			if response.Code != http.StatusOK {
-				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-			}
-		})
+	requestTickets := httptest.NewRequest(http.MethodGet, "/api/support/tickets", nil)
+	requestTickets.AddCookie(&http.Cookie{Name: "opl_session", Value: "session-token"})
+	ticketsResponse := httptest.NewRecorder()
+	handler.ServeHTTP(ticketsResponse, requestTickets)
+	if ticketsResponse.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", ticketsResponse.Code, ticketsResponse.Body.String())
+	}
+	var ticketsPayload map[string]json.RawMessage
+	if err := json.NewDecoder(ticketsResponse.Body).Decode(&ticketsPayload); err != nil {
+		t.Fatalf("decode tickets: %v", err)
+	}
+	if len(ticketsPayload["tickets"]) == 0 {
+		t.Fatalf("tickets missing: %#v", ticketsPayload)
 	}
 
 	request := httptest.NewRequest(http.MethodPost, "/api/support/tickets", strings.NewReader(`{"subject":"Need help","body":"Workspace is blocked","workspaceId":"ws-alpha"}`))
@@ -282,7 +296,7 @@ func TestOwnerMutationRejectsMissingCSRF(t *testing.T) {
 	}
 }
 
-func TestAdminPolicyAndApprovalRoutes(t *testing.T) {
+func TestManagementStateIncludesPoliciesAndApprovals(t *testing.T) {
 	governance := &fakeGovernanceService{
 		policies:  []console.PolicyView{{ID: "policy-alpha", Name: "Managed Workspace Approval", Status: "active"}},
 		approvals: []console.ApprovalView{{ID: "approval-alpha", Status: "pending"}},
@@ -298,46 +312,25 @@ func TestAdminPolicyAndApprovalRoutes(t *testing.T) {
 		Governance:        governance,
 	})
 
-	for _, path := range []string{"/api/admin/policies", "/api/admin/approvals"} {
-		t.Run(path, func(t *testing.T) {
-			request := httptest.NewRequest(http.MethodGet, path, nil)
-			request.AddCookie(&http.Cookie{Name: "opl_session", Value: "session-token"})
-			response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/management/state", nil)
+	request.AddCookie(&http.Cookie{Name: "opl_session", Value: "session-token"})
+	response := httptest.NewRecorder()
 
-			handler.ServeHTTP(response, request)
+	handler.ServeHTTP(response, request)
 
-			if response.Code != http.StatusOK {
-				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-			}
-		})
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
-
-	createPolicy := httptest.NewRequest(http.MethodPost, "/api/admin/policies", strings.NewReader(`{"organizationId":"org-alpha","name":"Managed Workspace Approval","policyType":"workspace_lifecycle","rules":{"requiresApproval":true}}`))
-	createPolicy.AddCookie(&http.Cookie{Name: "opl_session", Value: "session-token"})
-	createPolicy.Header.Set("x-opl-csrf-token", "csrf-token")
-	createPolicyResponse := httptest.NewRecorder()
-	handler.ServeHTTP(createPolicyResponse, createPolicy)
-	if createPolicyResponse.Code != http.StatusCreated {
-		t.Fatalf("status = %d, body = %s", createPolicyResponse.Code, createPolicyResponse.Body.String())
+	var payload map[string]json.RawMessage
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode management state: %v", err)
 	}
-	if governance.createdPolicy.OrganizationID != "org-alpha" || governance.createdPolicy.PolicyType != "workspace_lifecycle" {
-		t.Fatalf("created policy = %#v", governance.createdPolicy)
-	}
-
-	approve := httptest.NewRequest(http.MethodPost, "/api/admin/approvals/approval-alpha/approve", strings.NewReader(`{"decisionNote":"approved for pilot"}`))
-	approve.AddCookie(&http.Cookie{Name: "opl_session", Value: "session-token"})
-	approve.Header.Set("x-opl-csrf-token", "csrf-token")
-	approveResponse := httptest.NewRecorder()
-	handler.ServeHTTP(approveResponse, approve)
-	if approveResponse.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", approveResponse.Code, approveResponse.Body.String())
-	}
-	if governance.decision.ApprovalID != "approval-alpha" || governance.decision.Decision != "approved" {
-		t.Fatalf("decision = %#v", governance.decision)
+	if len(payload["policies"]) == 0 || len(payload["approvals"]) == 0 {
+		t.Fatalf("management state = %#v", payload)
 	}
 }
 
-func TestAdminGovernanceReadModelRoutes(t *testing.T) {
+func TestManagementStateIncludesGovernanceReadModels(t *testing.T) {
 	handler := NewRouter(Dependencies{
 		Auth: &fakeAuthService{session: auth.Session{
 			Token:     "session-token",
@@ -354,15 +347,65 @@ func TestAdminGovernanceReadModelRoutes(t *testing.T) {
 		},
 	})
 
-	for _, path := range []string{"/api/admin/organizations", "/api/admin/teams", "/api/admin/roles", "/api/admin/resources"} {
-		t.Run(path, func(t *testing.T) {
-			request := httptest.NewRequest(http.MethodGet, path, nil)
-			request.AddCookie(&http.Cookie{Name: "opl_session", Value: "session-token"})
+	request := httptest.NewRequest(http.MethodGet, "/api/management/state", nil)
+	request.AddCookie(&http.Cookie{Name: "opl_session", Value: "session-token"})
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var payload map[string]json.RawMessage
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode management state: %v", err)
+	}
+	for _, key := range []string{"organizations", "teams", "roles", "resources"} {
+		if len(payload[key]) == 0 {
+			t.Fatalf("management state missing %s: %#v", key, payload)
+		}
+	}
+}
+
+func TestOperatorSummaryAllowsConfiguredToken(t *testing.T) {
+	handler := NewRouter(Dependencies{
+		OperatorSummaryToken: "operator-secret",
+		Governance: &fakeGovernanceService{
+			adminUsers: []console.UserView{{ID: "usr-admin", Email: "admin@opl.local", Role: "admin", Status: "active"}},
+			resources:  []console.ManagedResourceView{{ID: "mrv-alpha", OrganizationID: "org-alpha", ResourceType: "compute", ResourceID: "cmp-alpha", Status: "running"}},
+		},
+	})
+	request := httptest.NewRequest(http.MethodGet, "/api/operator/summary", nil)
+	request.Header.Set("x-opl-operator-token", "operator-secret")
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+}
+
+func TestOldGovernanceCompatibilityRoutesAreNotMounted(t *testing.T) {
+	handler := NewRouter(Dependencies{})
+	for _, item := range []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/api/me"},
+		{http.MethodGet, "/api/packages"},
+		{http.MethodGet, "/api/workspaces"},
+		{http.MethodGet, "/api/billing/wallet"},
+		{http.MethodGet, "/api/billing/ledger"},
+		{http.MethodGet, "/api/admin/users"},
+		{http.MethodGet, "/api/admin/policies"},
+		{http.MethodPost, "/api/admin/approvals/approval-alpha/approve"},
+	} {
+		t.Run(item.method+" "+item.path, func(t *testing.T) {
+			request := httptest.NewRequest(item.method, item.path, nil)
 			response := httptest.NewRecorder()
-
 			handler.ServeHTTP(response, request)
-
-			if response.Code != http.StatusOK {
+			if response.Code != http.StatusNotFound && response.Code != http.StatusMethodNotAllowed {
 				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 			}
 		})

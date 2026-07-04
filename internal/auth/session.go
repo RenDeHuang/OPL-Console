@@ -28,6 +28,7 @@ type SessionRecord struct {
 
 type UserRepository interface {
 	FindUserByEmail(ctx context.Context, email string) (UserWithPassword, error)
+	FindFirstAdmin(ctx context.Context) (UserWithPassword, error)
 }
 
 type SessionRepository interface {
@@ -121,6 +122,17 @@ func (s *Service) Login(ctx context.Context, email string, password string) (Ses
 	}, nil
 }
 
+func (s *Service) OperatorLogin(ctx context.Context) (Session, error) {
+	user, err := s.users.FindFirstAdmin(ctx)
+	if err != nil {
+		return Session{}, ErrInvalidCredentials
+	}
+	if user.Status != StatusActive || user.Role != RoleAdmin {
+		return Session{}, ErrUserDisabled
+	}
+	return s.createSession(ctx, user.User)
+}
+
 func (s *Service) Session(ctx context.Context, token string) (Session, error) {
 	if token == "" {
 		return Session{}, ErrSessionNotFound
@@ -133,6 +145,37 @@ func (s *Service) Logout(ctx context.Context, token string) error {
 		return nil
 	}
 	return s.sessions.DeleteSessionByTokenHash(ctx, HashToken(token))
+}
+
+func (s *Service) createSession(ctx context.Context, user User) (Session, error) {
+	token, err := randomToken()
+	if err != nil {
+		return Session{}, err
+	}
+	csrfToken, err := randomToken()
+	if err != nil {
+		return Session{}, err
+	}
+	sessionID, err := randomToken()
+	if err != nil {
+		return Session{}, err
+	}
+	expiresAt := s.now().Add(s.sessionTTL)
+	if err := s.sessions.CreateSession(ctx, SessionRecord{
+		ID:            sessionID,
+		UserID:        user.ID,
+		TokenHash:     HashToken(token),
+		CSRFTokenHash: HashToken(csrfToken),
+		ExpiresAt:     expiresAt,
+	}); err != nil {
+		return Session{}, err
+	}
+	return Session{
+		Token:     token,
+		CSRFToken: csrfToken,
+		User:      user,
+		ExpiresAt: expiresAt,
+	}, nil
 }
 
 func randomToken() (string, error) {
