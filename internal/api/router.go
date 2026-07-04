@@ -18,10 +18,13 @@ var RouteManifest = []string{
 	"GET /api/auth/me",
 	"GET /api/state",
 	"GET /api/operator/summary",
+	"POST /api/operator/cleanup-workspace-access",
 	"GET /api/management/state",
 	"POST /api/billing/topups",
 	"POST /api/organizations",
 	"POST /api/users",
+	"POST /api/users/disable",
+	"POST /api/users/delete",
 	"POST /api/organizations/members",
 	"GET /api/compute-pools",
 	"GET /api/compute-allocations",
@@ -133,12 +136,15 @@ func NewRouter(deps Dependencies) http.Handler {
 	router.Get("/api/operator/summary", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, demoOperatorSummary())
 	})
+	router.Post("/api/operator/cleanup-workspace-access", acceptedAction("workspace_access_cleanup_requested"))
 	router.Get("/api/management/state", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, demoManagementState())
 	})
 	router.Post("/api/billing/topups", acceptedAction("billing_topup_recorded"))
 	router.Post("/api/organizations", acceptedAction("organization_created"))
 	router.Post("/api/users", acceptedAction("user_created"))
+	router.Post("/api/users/disable", acceptedAction("user_disable_requested"))
+	router.Post("/api/users/delete", acceptedAction("user_delete_requested"))
 	router.Post("/api/organizations/members", acceptedAction("organization_member_added"))
 	router.Get("/api/compute-pools", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"computePools": demoComputePools()})

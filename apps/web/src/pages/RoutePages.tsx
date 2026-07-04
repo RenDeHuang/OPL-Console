@@ -41,6 +41,7 @@ export function ConsoleRoutePage({ route, path, state, wallet = state.wallet, ti
   if (path.startsWith("/console/storage")) return <ResourceListPage route={route} title="存储" eyebrow="TKE 资源" data={state.storageVolumes} createPath="/console/storage/new" createLabel="开通存储" />;
   if (path.startsWith("/console/attachments/new")) return <CreateResourcePage route={route} title="挂载存储" action="挂载存储" fields={["computeId", "storageId", "mountPath"]} />;
   if (path.startsWith("/console/attachments")) return <ResourceListPage route={route} title="挂载" eyebrow="存储挂载" data={state.storageAttachments} createPath="/console/attachments/new" createLabel="挂载存储" />;
+  if (path.startsWith("/console/resources/relationships")) return <ResourceRelationshipPage route={route} state={state} />;
   if (path.startsWith("/console/workspaces/new")) return <CreateResourcePage route={route} title="创建工作区" action="创建工作区" fields={["name", "packageId", "token"]} />;
   if (path.startsWith("/console/workspaces/")) return <DetailPage route={route} data={state.workspaces} id={path.split("/").at(-1) || ""} title="工作区" />;
   if (path.startsWith("/console/workspaces")) return <WorkspacesPage route={route} state={state} wallet={wallet} />;
@@ -58,6 +59,9 @@ export function AdminRoutePage({ route, state, management, operator, tickets = {
   if (route.id === "admin.billing") return <ResourceListPage route={route} title="计费运营" eyebrow="管理" data={state.manualTopups} />;
   if (route.id === "admin.ledger") return <ResourceListPage route={route} title="账本" eyebrow="管理" data={state.billingLedger} />;
   if (route.id === "admin.runtime") return <AdminRuntimePage route={route} operator={operator} />;
+  if (route.id === "admin.diagnostics") return <AdminDiagnosticsPage route={route} operator={operator} />;
+  if (route.id === "admin.e2e") return <AdminE2EPage route={route} operator={operator} />;
+  if (route.id === "admin.cleanup") return <AdminCleanupPage route={route} management={management} operator={operator} />;
   if (route.id === "admin.support") return <ResourceListPage route={route} title="支持运营" eyebrow="管理" data={tickets.tickets} />;
   return <AdminOverviewPage route={route} state={state} operator={operator} />;
 }
@@ -199,6 +203,34 @@ function ComputePage({ route, state }: { route: OplRoute; state: ConsoleState })
         ]}
       />
       <ResourceListPage route={route} title="计算分配" eyebrow="计算分配" data={state.computeAllocations} embedded />
+    </ConsoleSurface>
+  );
+}
+
+function ResourceRelationshipPage({ route, state }: { route: OplRoute; state: ConsoleState }) {
+  const rows = state.workspaces.map((workspace) => ({
+    id: workspace.id,
+    workspace: workspace.name || workspace.id,
+    computeAllocationId: workspace.computeAllocationId || workspace.computeId || "-",
+    storageId: workspace.storageId || "-",
+    attachmentId: workspace.attachmentId || "-",
+    tokenStatus: (workspace.access as { tokenStatus?: string } | undefined)?.tokenStatus || "-",
+  }));
+
+  return (
+    <ConsoleSurface title="资源关系" eyebrow="读模型" subtitle="工作区入口、计算资源、存储资源与挂载关系">
+      <MetricStrip
+        items={[
+          { label: "工作区入口", value: state.workspaces.length, caption: "当前账号名下", tone: state.workspaces.length ? "info" : "neutral" },
+          { label: "计算资源", value: state.computeAllocations.length, caption: "计算分配", tone: state.computeAllocations.length ? "good" : "neutral" },
+          { label: "存储资源", value: state.storageVolumes.length, caption: "存储卷", tone: state.storageVolumes.length ? "info" : "neutral" },
+          { label: "挂载关系", value: state.storageAttachments.length, caption: "存储挂载", tone: state.storageAttachments.length ? "good" : "neutral" },
+        ]}
+      />
+      <InsightPanel title="关系表" eyebrow="资源">
+        <ObjectTable data={rows} emptyText="暂无资源关系" columns={columnsFor(rows)} />
+      </InsightPanel>
+      <ContractPanel route={route} />
     </ConsoleSurface>
   );
 }
@@ -408,6 +440,68 @@ function AdminRuntimePage({ route }: { route: OplRoute; operator?: Record<string
   );
 }
 
+function AdminDiagnosticsPage({ route, operator }: { route: OplRoute; operator?: Record<string, unknown> }) {
+  return (
+    <ConsoleSurface title="线上诊断" eyebrow="运行状态" subtitle="运行就绪、生产就绪与运营摘要">
+      <div className="consoleGrid equal">
+        <InsightPanel title="诊断摘要" eyebrow="运行">
+          <ResourceSplit items={[
+            { label: "工作区总数", value: valueFrom(operator, "workspaces.total", 0), meta: "运营摘要", status: "已读取", tone: "info" },
+            { label: "运行中", value: valueFrom(operator, "workspaces.running", 0), meta: "工作区入口", status: "运行", tone: "good" },
+            { label: "失败操作", value: valueFrom(operator, "runtimeOperations.failed", 0), meta: "运行操作", status: "跟踪", tone: Number(valueFrom(operator, "runtimeOperations.failed", 0)) > 0 ? "warn" : "good" },
+            { label: "告警", value: valueFrom(operator, "notifications.total", 0), meta: "运营可见", status: "信号", tone: "neutral" },
+          ]} />
+        </InsightPanel>
+        <InsightPanel title="最近信号" eyebrow="诊断">
+          <TimelineList items={(valueFrom(operator, "notifications.recent", []) as unknown[]).map((entry) => ({
+            title: renderCell(entry),
+            description: "运营信号",
+            meta: "最近",
+            tone: "info" as const,
+          }))} emptyText="暂无诊断信号" />
+        </InsightPanel>
+      </div>
+      <ContractPanel route={route} />
+    </ConsoleSurface>
+  );
+}
+
+function AdminE2EPage({ route, operator }: { route: OplRoute; operator?: Record<string, unknown> }) {
+  return (
+    <ConsoleSurface title="E2E记录" eyebrow="生产验证" subtitle="端到端验证与上线证据">
+      <MetricStrip
+        items={[
+          { label: "工作区总数", value: valueFrom(operator, "workspaces.total", 0), caption: "验证对象", tone: "info" },
+          { label: "运行中", value: valueFrom(operator, "workspaces.running", 0), caption: "可访问入口", tone: "good" },
+          { label: "失败操作", value: valueFrom(operator, "runtimeOperations.failed", 0), caption: "运行操作失败", tone: Number(valueFrom(operator, "runtimeOperations.failed", 0)) > 0 ? "warn" : "good" },
+        ]}
+      />
+      <InsightPanel title="验证记录" eyebrow="E2E">
+        <TimelineList items={[]} emptyText="暂无端到端验证记录" />
+      </InsightPanel>
+      <ContractPanel route={route} />
+    </ConsoleSurface>
+  );
+}
+
+function AdminCleanupPage({ route, management, operator }: { route: OplRoute; management?: ManagementState; operator?: Record<string, unknown> }) {
+  return (
+    <ConsoleSurface title="入口清理" eyebrow="工作区入口" subtitle="清理失效访问入口与账号关联">
+      <MetricStrip
+        items={[
+          { label: "用户", value: management?.users.length || 0, caption: "管理模型", tone: "info" },
+          { label: "账号", value: management?.accounts.length || 0, caption: "计费账号", tone: "neutral" },
+          { label: "工作区", value: valueFrom(operator, "workspaces.total", 0), caption: "运营摘要", tone: "good" },
+        ]}
+      />
+      <InsightPanel title="清理候选" eyebrow="入口">
+        <ObjectTable data={management?.users || []} emptyText="暂无清理候选" columns={columnsFor(management?.users || [])} />
+      </InsightPanel>
+      <ContractPanel route={route} />
+    </ConsoleSurface>
+  );
+}
+
 function ContractPanel({ route }: { route: OplRoute }) {
   return (
     <InsightPanel title="API 契约" eyebrow="边界">
@@ -453,12 +547,12 @@ function toneForStatus(value: unknown) {
   return "info" as const;
 }
 
-function valueFrom(source: Record<string, unknown> | undefined, path: string, fallback: string | number) {
+function valueFrom<T>(source: Record<string, unknown> | undefined, path: string, fallback: T): T {
   if (!source) return fallback;
   return path.split(".").reduce<unknown>((current, key) => {
     if (current && typeof current === "object" && key in current) return (current as Record<string, unknown>)[key];
     return fallback;
-  }, source) as string | number;
+  }, source) as T;
 }
 
 function labelize(value: string) {

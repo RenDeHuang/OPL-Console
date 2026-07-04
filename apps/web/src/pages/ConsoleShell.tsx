@@ -31,6 +31,7 @@ function menuIcon(path: string) {
     "/console/compute": <Boxes size={17} />,
     "/console/storage": <Database size={17} />,
     "/console/attachments": <Layers size={17} />,
+    "/console/resources/relationships": <Layers size={17} />,
     "/console/workspaces": <Server size={17} />,
     "/console/gateway": <KeyRound size={17} />,
     "/console/billing": <WalletCards size={17} />,
@@ -42,6 +43,9 @@ function menuIcon(path: string) {
     "/admin/billing": <CreditCard size={17} />,
     "/admin/ledger": <Database size={17} />,
     "/admin/runtime": <Activity size={17} />,
+    "/admin/diagnostics": <Activity size={17} />,
+    "/admin/e2e": <FileText size={17} />,
+    "/admin/cleanup": <Database size={17} />,
     "/admin/support": <Headphones size={17} />,
   };
   return map[path] || <FileText size={17} />;
