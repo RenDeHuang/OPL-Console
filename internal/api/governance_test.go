@@ -247,6 +247,7 @@ func TestOwnerBillingAndSupportRoutes(t *testing.T) {
 
 	request := httptest.NewRequest(http.MethodPost, "/api/support/tickets", strings.NewReader(`{"subject":"Need help","body":"Workspace is blocked","workspaceId":"ws-alpha"}`))
 	request.AddCookie(&http.Cookie{Name: "opl_session", Value: "session-token"})
+	request.Header.Set("x-opl-csrf-token", "csrf-token")
 	response := httptest.NewRecorder()
 
 	handler.ServeHTTP(response, request)
@@ -256,6 +257,28 @@ func TestOwnerBillingAndSupportRoutes(t *testing.T) {
 	}
 	if governance.createdTicket.Subject != "Need help" || governance.createdTicket.WorkspaceID != "ws-alpha" {
 		t.Fatalf("created ticket = %#v", governance.createdTicket)
+	}
+}
+
+func TestOwnerMutationRejectsMissingCSRF(t *testing.T) {
+	handler := NewRouter(Dependencies{
+		Auth: &fakeAuthService{session: auth.Session{
+			Token:     "session-token",
+			CSRFToken: "csrf-token",
+			ExpiresAt: time.Now().Add(time.Hour),
+			User:      auth.User{ID: "usr-owner", Email: "owner@opl.local", Role: auth.RoleOwner, Status: auth.StatusActive},
+		}},
+		SessionCookieName: "opl_session",
+		Governance:        &fakeGovernanceService{},
+	})
+	request := httptest.NewRequest(http.MethodPost, "/api/support/tickets", strings.NewReader(`{"subject":"Need help","body":"Workspace is blocked"}`))
+	request.AddCookie(&http.Cookie{Name: "opl_session", Value: "session-token"})
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
 }
 
@@ -291,6 +314,7 @@ func TestAdminPolicyAndApprovalRoutes(t *testing.T) {
 
 	createPolicy := httptest.NewRequest(http.MethodPost, "/api/admin/policies", strings.NewReader(`{"organizationId":"org-alpha","name":"Managed Workspace Approval","policyType":"workspace_lifecycle","rules":{"requiresApproval":true}}`))
 	createPolicy.AddCookie(&http.Cookie{Name: "opl_session", Value: "session-token"})
+	createPolicy.Header.Set("x-opl-csrf-token", "csrf-token")
 	createPolicyResponse := httptest.NewRecorder()
 	handler.ServeHTTP(createPolicyResponse, createPolicy)
 	if createPolicyResponse.Code != http.StatusCreated {
@@ -302,6 +326,7 @@ func TestAdminPolicyAndApprovalRoutes(t *testing.T) {
 
 	approve := httptest.NewRequest(http.MethodPost, "/api/admin/approvals/approval-alpha/approve", strings.NewReader(`{"decisionNote":"approved for pilot"}`))
 	approve.AddCookie(&http.Cookie{Name: "opl_session", Value: "session-token"})
+	approve.Header.Set("x-opl-csrf-token", "csrf-token")
 	approveResponse := httptest.NewRecorder()
 	handler.ServeHTTP(approveResponse, approve)
 	if approveResponse.Code != http.StatusOK {

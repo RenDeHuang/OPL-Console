@@ -102,15 +102,33 @@ export type ApprovalView = {
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const csrfToken = typeof window === "undefined" ? "" : window.localStorage.getItem("opl_csrf_token") || "";
+  const headers = new Headers(init?.headers);
+  if (init?.body) {
+    headers.set("content-type", "application/json");
+  }
+  if (csrfToken && init?.method && init.method !== "GET") {
+    headers.set("x-opl-csrf-token", csrfToken);
+  }
   const response = await fetch(path, {
     credentials: "include",
-    headers: init?.body ? { "content-type": "application/json", ...init.headers } : init?.headers,
+    headers,
     ...init
   });
   if (!response.ok) {
     throw new Error(`request_failed:${path}:${response.status}`);
   }
-  return response.json() as Promise<T>;
+  const payload = await response.json() as T;
+  if (path === "/api/auth/login" || path === "/api/auth/session") {
+    const maybeSession = payload as Session;
+    if (maybeSession.csrfToken && typeof window !== "undefined") {
+      window.localStorage.setItem("opl_csrf_token", maybeSession.csrfToken);
+    }
+  }
+  if (path === "/api/auth/logout" && typeof window !== "undefined") {
+    window.localStorage.removeItem("opl_csrf_token");
+  }
+  return payload;
 }
 
 export const api = {

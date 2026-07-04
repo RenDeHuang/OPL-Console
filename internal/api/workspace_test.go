@@ -83,6 +83,7 @@ func TestCreateWorkspaceRouteRequiresOwnerAndCallsFacade(t *testing.T) {
 		"token":"share"
 	}`))
 	request.AddCookie(&http.Cookie{Name: "opl_session", Value: "session-token"})
+	request.Header.Set("x-opl-csrf-token", "csrf-token")
 	response := httptest.NewRecorder()
 
 	handler.ServeHTTP(response, request)
@@ -162,6 +163,7 @@ func TestWorkspaceLifecycleRoutesInjectActorAndCallFacade(t *testing.T) {
 			})
 			request := httptest.NewRequest(http.MethodPost, item.path, strings.NewReader(`{}`))
 			request.AddCookie(&http.Cookie{Name: "opl_session", Value: "session-token"})
+			request.Header.Set("x-opl-csrf-token", "csrf-token")
 			response := httptest.NewRecorder()
 
 			handler.ServeHTTP(response, request)
@@ -190,6 +192,7 @@ func TestResetWorkspaceTokenRouteReadsToken(t *testing.T) {
 	})
 	request := httptest.NewRequest(http.MethodPost, "/api/workspaces/ws-alpha/tokens/reset", strings.NewReader(`{"token":"new-token"}`))
 	request.AddCookie(&http.Cookie{Name: "opl_session", Value: "session-token"})
+	request.Header.Set("x-opl-csrf-token", "csrf-token")
 	response := httptest.NewRecorder()
 
 	handler.ServeHTTP(response, request)

@@ -28,6 +28,10 @@ type createWorkspaceResult struct {
 	ApprovalID  string `json:"approvalId"`
 }
 
+type authSession struct {
+	CSRFToken string `json:"csrfToken"`
+}
+
 func main() {
 	origin := strings.TrimRight(os.Getenv("OPL_CONSOLE_ORIGIN"), "/")
 	if origin == "" {
@@ -80,7 +84,11 @@ func verifyWorkspace(client *http.Client, origin string) createWorkspaceResult {
 	if email == "" || password == "" {
 		log.Fatal("OPL_CONSOLE_EMAIL and OPL_CONSOLE_PASSWORD are required when OPL_VERIFY_WORKSPACE=1")
 	}
-	postJSON(client, origin+"/api/auth/login", map[string]string{"email": email, "password": password}, nil)
+	var session authSession
+	postJSON(client, origin+"/api/auth/login", map[string]string{"email": email, "password": password}, &session, "")
+	if session.CSRFToken == "" {
+		log.Fatal("login did not return csrfToken")
+	}
 
 	var account wallet
 	getJSON(client, origin+"/api/billing/wallet", &account)
@@ -97,7 +105,7 @@ func verifyWorkspace(client *http.Client, origin string) createWorkspaceResult {
 		"billingAccountId": account.BillingAccountID,
 		"packageId":        "basic",
 		"token":            token,
-	}, &created)
+	}, &created, session.CSRFToken)
 	if created.State == "approval_required" {
 		log.Fatalf("workspace verifier requires approval id=%s; approve policy or disable smoke lifecycle for this run", created.ApprovalID)
 	}
@@ -113,7 +121,7 @@ func verifyWorkspace(client *http.Client, origin string) createWorkspaceResult {
 	if handoff.URL == "" {
 		log.Fatalf("workspace handoff returned empty URL: %#v", handoff)
 	}
-	postJSON(client, origin+"/api/workspaces/"+workspaceID+"/delete", map[string]string{}, nil)
+	postJSON(client, origin+"/api/workspaces/"+workspaceID+"/delete", map[string]string{}, nil, session.CSRFToken)
 	return handoff
 }
 
@@ -131,12 +139,20 @@ func getJSON(client *http.Client, url string, target any) {
 	}
 }
 
-func postJSON(client *http.Client, url string, payload any, target any) {
+func postJSON(client *http.Client, url string, payload any, target any, csrfToken string) {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		log.Fatalf("marshal %s: %v", url, err)
 	}
-	response, err := client.Post(url, "application/json", bytes.NewReader(body))
+	request, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		log.Fatalf("build POST %s: %v", url, err)
+	}
+	request.Header.Set("content-type", "application/json")
+	if csrfToken != "" {
+		request.Header.Set("x-opl-csrf-token", csrfToken)
+	}
+	response, err := client.Do(request)
 	if err != nil {
 		log.Fatalf("POST %s: %v", url, err)
 	}

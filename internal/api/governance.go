@@ -245,6 +245,9 @@ func requireOwner(w http.ResponseWriter, r *http.Request, deps Dependencies) (au
 	if !ok {
 		return auth.Session{}, false
 	}
+	if !requireCSRF(w, r, session) {
+		return auth.Session{}, false
+	}
 	if !auth.CanAccessOwner(session.User) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
 		return auth.Session{}, false
@@ -257,11 +260,33 @@ func requireAdmin(w http.ResponseWriter, r *http.Request, deps Dependencies) (au
 	if !ok {
 		return auth.Session{}, false
 	}
+	if !requireCSRF(w, r, session) {
+		return auth.Session{}, false
+	}
 	if !auth.CanAccessAdmin(session.User) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
 		return auth.Session{}, false
 	}
 	return session, true
+}
+
+func requireCSRF(w http.ResponseWriter, r *http.Request, session auth.Session) bool {
+	if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
+		return true
+	}
+	token := r.Header.Get("x-opl-csrf-token")
+	if token == "" {
+		token = r.Header.Get("x-opl-csrf")
+	}
+	if token == "" {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "csrf_token_required"})
+		return false
+	}
+	if token == session.CSRFToken || auth.HashToken(token) == session.CSRFToken {
+		return true
+	}
+	writeJSON(w, http.StatusForbidden, map[string]string{"error": "csrf_token_invalid"})
+	return false
 }
 
 func sessionFromRequest(w http.ResponseWriter, r *http.Request, deps Dependencies) (auth.Session, bool) {
