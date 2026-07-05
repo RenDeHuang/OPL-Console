@@ -25,12 +25,22 @@ func Production(cfg config.Config) Report {
 		"workspace_storage_class": strings.TrimSpace(cfg.WorkspaceStorageClass) != "",
 		"fabric_provider":         cfg.FabricProvider == "tke",
 		"auth_seed":               productionAuthSeed(cfg.ConsoleUsersJSON),
+		"fabric_internal_url":     internalHTTPURL(cfg.FabricInternalURL),
+		"ledger_internal_url":     internalHTTPURL(cfg.LedgerInternalURL),
+		"fabric_service_token":    strings.TrimSpace(cfg.OperatorToken) != "",
+		"ledger_service_token":    strings.TrimSpace(cfg.LedgerServiceToken) != "",
+		"ledger_admin_token":      strings.TrimSpace(cfg.LedgerAdminToken) != "",
 	}
 	ready := true
 	for _, ok := range checks {
 		ready = ready && ok
 	}
 	return Report{Ready: ready, Checks: checks}
+}
+
+func internalHTTPURL(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	return strings.HasPrefix(raw, "http://") || strings.HasPrefix(raw, "https://")
 }
 
 func inClusterServiceAccount() bool {

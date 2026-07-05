@@ -19,6 +19,11 @@ type Config struct {
 	FabricProvider        string
 	SessionCookieName     string
 	ConsoleUsersJSON      string
+	FabricInternalURL     string
+	LedgerInternalURL     string
+	OperatorToken         string
+	LedgerServiceToken    string
+	LedgerAdminToken      string
 }
 
 func Load() (Config, error) {
@@ -35,6 +40,11 @@ func Load() (Config, error) {
 		FabricProvider:        env("OPL_FABRIC_PROVIDER", "local"),
 		SessionCookieName:     env("OPL_SESSION_COOKIE_NAME", "opl_console_session"),
 		ConsoleUsersJSON:      env("OPL_CONSOLE_USERS_JSON", ""),
+		FabricInternalURL:     env("OPL_FABRIC_INTERNAL_URL", ""),
+		LedgerInternalURL:     env("OPL_LEDGER_INTERNAL_URL", ""),
+		OperatorToken:         env("OPL_OPERATOR_TOKEN", ""),
+		LedgerServiceToken:    env("OPL_LEDGER_SERVICE_TOKEN", ""),
+		LedgerAdminToken:      env("OPL_LEDGER_ADMIN_TOKEN", ""),
 	}
 	if cfg.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("DATABASE_URL is required")

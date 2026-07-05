@@ -3,9 +3,13 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/RenDeHuang/opl-console/internal/upstream"
 )
 
 func TestRouteManifestMatchesMedoplConsole(t *testing.T) {
@@ -189,6 +193,79 @@ func TestLoginRejectsWrongCredentials(t *testing.T) {
 
 	if response.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", response.Code)
+	}
+}
+
+func TestComputeAllocationDelegatesToFabricUpstream(t *testing.T) {
+	var gotPath string
+	var gotAuth string
+	var gotIdempotency string
+	var gotCorrelation string
+	var gotBody string
+	fabric := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		gotIdempotency = r.Header.Get("Idempotency-Key")
+		gotCorrelation = r.Header.Get("X-Correlation-Id")
+		body, _ := io.ReadAll(r.Body)
+		gotBody = string(body)
+		writeJSON(w, http.StatusAccepted, map[string]any{"operationId": "op-compute-1"})
+	}))
+	defer fabric.Close()
+
+	handler := NewRouter(Dependencies{
+		Fabric: upstream.New(upstream.ClientConfig{BaseURL: fabric.URL, BearerToken: "fabric-token"}),
+	})
+	request := httptest.NewRequest(http.MethodPost, "/api/compute-allocations", strings.NewReader(`{"name":"alpha"}`))
+	request.Header.Set("content-type", "application/json")
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if gotPath != "/api/fabric/compute-allocations" {
+		t.Fatalf("path = %q", gotPath)
+	}
+	if gotAuth != "Bearer fabric-token" {
+		t.Fatalf("Authorization = %q", gotAuth)
+	}
+	if gotIdempotency == "" || gotCorrelation == "" {
+		t.Fatalf("operation headers missing idempotency=%q correlation=%q", gotIdempotency, gotCorrelation)
+	}
+	if gotBody != `{"name":"alpha"}` {
+		t.Fatalf("body = %q", gotBody)
+	}
+}
+
+func TestBillingTopUpDelegatesToLedgerUpstream(t *testing.T) {
+	var gotPath string
+	var gotAuth string
+	ledger := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		writeJSON(w, http.StatusCreated, map[string]any{"topUpId": "topup-1"})
+	}))
+	defer ledger.Close()
+
+	handler := NewRouter(Dependencies{
+		Ledger: upstream.New(upstream.ClientConfig{BaseURL: ledger.URL, BearerToken: "ledger-service-token"}),
+	})
+	request := httptest.NewRequest(http.MethodPost, "/api/billing/topups", strings.NewReader(`{"amount":5000}`))
+	request.Header.Set("content-type", "application/json")
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if gotPath != "/api/v1/billing/topups" {
+		t.Fatalf("path = %q", gotPath)
+	}
+	if gotAuth != "Bearer ledger-service-token" {
+		t.Fatalf("Authorization = %q", gotAuth)
 	}
 }
 

@@ -33,6 +33,19 @@ Terminal 2, web dev server:
 npm --prefix apps/web run dev
 ```
 
+Integration environment variables used by the Go API:
+
+```bash
+OPL_FABRIC_INTERNAL_URL=http://opl-fabric-api:8787
+OPL_LEDGER_INTERNAL_URL=http://opl-ledger-api:8788
+OPL_OPERATOR_TOKEN=replace-with-fabric-service-token
+OPL_LEDGER_SERVICE_TOKEN=replace-with-ledger-service-token
+OPL_LEDGER_ADMIN_TOKEN=replace-with-ledger-admin-token
+```
+
+The browser never reads these values. OPL Console reads them server-side and
+delegates Fabric and Ledger calls over the internal network.
+
 ## Verification
 
 ```bash

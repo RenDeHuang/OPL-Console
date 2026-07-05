@@ -5,8 +5,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/RenDeHuang/opl-console/internal/upstream"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -52,6 +54,9 @@ var RouteManifest = []string{
 type Dependencies struct {
 	RuntimeReady    func() Readiness
 	ProductionReady func() Readiness
+	Fabric          *upstream.Client
+	Ledger          *upstream.Client
+	LedgerAdmin     *upstream.Client
 }
 
 func NewRouter(deps Dependencies) http.Handler {
@@ -140,7 +145,7 @@ func NewRouter(deps Dependencies) http.Handler {
 	router.Get("/api/management/state", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, demoManagementState())
 	})
-	router.Post("/api/billing/topups", acceptedAction("billing_topup_recorded"))
+	router.Post("/api/billing/topups", delegateOr(deps.Ledger, http.MethodPost, "/api/v1/billing/topups", acceptedAction("billing_topup_recorded")))
 	router.Post("/api/organizations", acceptedAction("organization_created"))
 	router.Post("/api/users", acceptedAction("user_created"))
 	router.Post("/api/users/disable", acceptedAction("user_disable_requested"))
@@ -160,21 +165,25 @@ func NewRouter(deps Dependencies) http.Handler {
 			"accountId": "acct-demo",
 		}})
 	})
-	router.Post("/api/compute-allocations", acceptedAction("compute_allocation_requested"))
-	router.Post("/api/compute-allocations/{id}/destroy", acceptedAction("compute_allocation_destroy_requested"))
-	router.Post("/api/storage-volumes", acceptedAction("storage_volume_requested"))
+	router.Post("/api/compute-allocations", delegateOr(deps.Fabric, http.MethodPost, "/api/fabric/compute-allocations", acceptedAction("compute_allocation_requested")))
+	router.Post("/api/compute-allocations/{id}/destroy", delegateOrParam(deps.Fabric, http.MethodPost, "/api/fabric/compute-allocations/{id}/destroy", acceptedAction("compute_allocation_destroy_requested")))
+	router.Post("/api/storage-volumes", delegateOr(deps.Fabric, http.MethodPost, "/api/fabric/storage-volumes", acceptedAction("storage_volume_requested")))
 	router.Post("/api/storage-volumes/destroy", acceptedAction("storage_volume_destroy_requested"))
-	router.Post("/api/storage-attachments", acceptedAction("storage_attachment_requested"))
+	router.Post("/api/storage-attachments", delegateOr(deps.Fabric, http.MethodPost, "/api/fabric/storage-attachments", acceptedAction("storage_attachment_requested")))
 	router.Post("/api/storage-attachments/detach", acceptedAction("storage_attachment_detach_requested"))
-	router.Post("/api/workspaces", acceptedAction("workspace_create_requested"))
+	router.Post("/api/workspaces", delegateOr(deps.Fabric, http.MethodPost, "/api/fabric/workspaces", acceptedAction("workspace_create_requested")))
 	router.Post("/api/workspaces/reset-token", acceptedAction("workspace_token_reset"))
 	router.Post("/api/workspaces/delete-token", acceptedAction("workspace_token_deleted"))
-	router.Post("/api/billing/request-usage", acceptedAction("request_usage_recorded"))
-	router.Post("/api/billing/reconciliation", acceptedAction("billing_reconciliation_recorded"))
-	router.Get("/api/ledger/task-receipts", func(w http.ResponseWriter, r *http.Request) {
+	router.Post("/api/billing/request-usage", delegateOr(deps.Ledger, http.MethodPost, "/api/v1/billing/request-usage", acceptedAction("request_usage_recorded")))
+	router.Post("/api/billing/reconciliation", delegateOr(deps.Ledger, http.MethodPost, "/api/v1/billing/reconciliation", acceptedAction("billing_reconciliation_recorded")))
+	ledgerRead := deps.LedgerAdmin
+	if ledgerRead == nil {
+		ledgerRead = deps.Ledger
+	}
+	router.Get("/api/ledger/task-receipts", delegateOr(ledgerRead, http.MethodGet, "/api/v1/ledger/task-receipts", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"receipts": []map[string]any{}})
-	})
-	router.Post("/api/ledger/task-receipts", acceptedAction("task_receipt_recorded"))
+	}))
+	router.Post("/api/ledger/task-receipts", delegateOr(deps.Ledger, http.MethodPost, "/api/v1/ledger/task-receipts", acceptedAction("task_receipt_recorded")))
 	router.Get("/api/runtime/readiness", func(w http.ResponseWriter, r *http.Request) {
 		check := deps.RuntimeReady
 		if check == nil {
@@ -208,6 +217,30 @@ func NewRouter(deps Dependencies) http.Handler {
 	})
 	router.Post("/api/support/tickets", acceptedAction("support_ticket_created"))
 	return router
+}
+
+func delegateOr(client *upstream.Client, method string, targetPath string, fallback http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if client != nil && client.Configured() {
+			client.Forward(w, r, method, targetPath)
+			return
+		}
+		fallback(w, r)
+	}
+}
+
+func delegateOrParam(client *upstream.Client, method string, targetPath string, fallback http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if client != nil && client.Configured() {
+			path := targetPath
+			for _, key := range []string{"id"} {
+				path = strings.ReplaceAll(path, "{"+key+"}", chi.URLParam(r, key))
+			}
+			client.Forward(w, r, method, path)
+			return
+		}
+		fallback(w, r)
+	}
 }
 
 func acceptedAction(action string) http.HandlerFunc {
